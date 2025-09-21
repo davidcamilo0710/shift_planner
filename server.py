@@ -17,7 +17,7 @@ print("🚀 Starting Planificador de Turnos API")
 print(f"📁 Working directory: {current_dir}")
 
 # Import FastAPI app
-from main import app
+from api_main import app
 
 if __name__ == "__main__":
     import uvicorn
