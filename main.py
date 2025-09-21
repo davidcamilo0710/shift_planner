@@ -254,12 +254,13 @@ async def internal_server_error_handler(request, exc):
     )
 
 if __name__ == "__main__":
-    # For local development
+    # Get port from environment (DigitalOcean sets this)
     port = int(os.environ.get("PORT", 8000))
+    print(f"Starting server on port {port}")
     uvicorn.run(
-        "api:app",
+        "main:app",
         host="0.0.0.0",
         port=port,
-        reload=True,
+        reload=False,  # Disable reload in production
         log_level="info"
     )
