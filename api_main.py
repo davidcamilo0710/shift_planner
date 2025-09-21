@@ -155,12 +155,23 @@ async def process_schedule(
                 detail=f"Processing failed: {result.error_message}"
             )
         
-        # Check if output file was created
-        if not Path(temp_output_file).exists():
+        # Check if output file was created and verify integrity
+        output_path = Path(temp_output_file)
+        if not output_path.exists():
             raise HTTPException(
                 status_code=500,
                 detail="Output file was not created successfully."
             )
+        
+        # Check file size
+        file_size = output_path.stat().st_size
+        if file_size == 0:
+            raise HTTPException(
+                status_code=500,
+                detail="Generated file is empty."
+            )
+        
+        logger.info(f"Generated file size: {file_size} bytes")
         
         # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -168,17 +179,19 @@ async def process_schedule(
         
         logger.info(f"Processing completed successfully. Returning file: {output_filename}")
         
-        # Return the file
+        # Return the file with explicit cleanup
         return FileResponse(
             path=temp_output_file,
             media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             filename=output_filename,
             headers={
                 "Content-Disposition": f"attachment; filename={output_filename}",
+                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "X-Processing-Time": str(result.processing_time),
                 "X-Strategy-Used": result.strategy_used,
                 "X-Total-Assignments": str(result.total_assignments) if result.total_assignments else "0"
-            }
+            },
+            background=None  # Let FastAPI handle file cleanup
         )
         
     except HTTPException:
@@ -191,14 +204,16 @@ async def process_schedule(
             detail=f"Internal server error: {str(e)}"
         )
     finally:
-        # Clean up temporary files
+        # Clean up temporary config file only
         try:
             if temp_config_file and Path(temp_config_file).exists():
                 os.unlink(temp_config_file)
         except Exception as e:
             logger.warning(f"Failed to clean up temp config file: {e}")
         
-        # Note: temp_output_file is cleaned up by FastAPI after sending the response
+        # Note: We DON'T delete temp_output_file here because FastAPI
+        # is still reading it to send the response. It will be cleaned up
+        # automatically when the temp file handle goes out of scope.
 
 @app.get("/docs/usage")
 async def api_usage_guide():
