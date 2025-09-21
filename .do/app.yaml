@@ -1,63 +1,15 @@
-# DigitalOcean App Platform Configuration
-# For Planificador de Turnos API
-
 name: planificador-turnos-api
-region: nyc
 
 services:
-- name: api
+- name: web
   source_dir: /
   github:
     branch: main
     deploy_on_push: true
-  
-  # Build configuration
-  build_command: pip install -r requirements.txt
-  
-  # Runtime configuration  
-  run_command: gunicorn --bind 0.0.0.0:$PORT -c gunicorn_config.py api:app
-  
-  # Environment variables
-  envs:
-  - key: PORT
-    value: "8080"
-  - key: LOG_LEVEL
-    value: "info"
-  - key: PYTHONPATH
-    value: "/app/src"
-    
-  # Resource allocation
+  run_command: gunicorn --bind=0.0.0.0:$PORT api:app
+  environment_slug: python
   instance_count: 1
-  instance_size_slug: basic-xxs  # Can scale up to basic-xs or basic-s if needed
-  
-  # Health check
+  instance_size_slug: basic-xxs
+  http_port: 8080
   health_check:
     http_path: "/health"
-    initial_delay_seconds: 30
-    period_seconds: 10
-    timeout_seconds: 5
-    success_threshold: 1
-    failure_threshold: 3
-  
-  # HTTP configuration
-  http_port: 8080
-  
-  # Routing and domains
-  routes:
-  - path: /
-  
-  # CORS configuration is handled in FastAPI app
-  
-# Optional: Add a database if needed in the future
-# databases:
-# - name: planificador-db
-#   engine: PG
-#   version: "14"
-#   size: basic
-
-# Static sites (if needed for frontend)
-# static_sites:
-# - name: frontend
-#   source_dir: /frontend
-#   build_command: npm run build
-#   output_dir: /build
