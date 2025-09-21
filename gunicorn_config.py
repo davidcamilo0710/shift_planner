@@ -8,7 +8,8 @@ import os
 import multiprocessing
 
 # Server socket
-bind = f"0.0.0.0:{os.environ.get('PORT', '8000')}"
+port = os.environ.get('PORT', '8000')
+bind = f"0.0.0.0:{port}"
 backlog = 2048
 
 # Worker processes

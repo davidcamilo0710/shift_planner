@@ -15,7 +15,7 @@ services:
   build_command: pip install -r requirements.txt
   
   # Runtime configuration  
-  run_command: gunicorn -c gunicorn_config.py api:app
+  run_command: gunicorn --bind 0.0.0.0:$PORT -c gunicorn_config.py api:app
   
   # Environment variables
   envs:
