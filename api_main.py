@@ -130,9 +130,13 @@ async def process_schedule(
             temp_config_file = temp_config.name
             content = await config_file.read()
             temp_config.write(content)
+            temp_config.flush()  # Ensure data is written to disk
+            # File will be closed when exiting with block
         
-        # Create output file
-        temp_output_file = tempfile.mktemp(suffix='.xlsx')
+        # Create output file - use NamedTemporaryFile to ensure proper file creation
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_output:
+            temp_output_file = temp_output.name
+            # File is created but empty - this ensures proper file handle creation
         
         # Initialize processor
         processor = ShiftProcessor()
@@ -172,6 +176,26 @@ async def process_schedule(
             )
         
         logger.info(f"Generated file size: {file_size} bytes")
+        
+        # Try to verify it's a valid Excel file by reading the first few bytes
+        try:
+            with open(temp_output_file, 'rb') as f:
+                header = f.read(4)
+                # Excel files should start with PK (ZIP signature) - 0x504B
+                if not header.startswith(b'PK'):
+                    logger.error(f"Generated file doesn't have Excel signature. Header: {header}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Generated file is not a valid Excel format."
+                    )
+                else:
+                    logger.info("File has valid Excel/ZIP signature")
+        except Exception as e:
+            logger.error(f"Error validating file format: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error validating generated file: {str(e)}"
+            )
         
         # Generate filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
