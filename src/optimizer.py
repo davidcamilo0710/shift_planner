@@ -494,9 +494,15 @@ class ShiftOptimizer:
                 
                 num_sundays = len(sunday_dates_worked)
                 
-                # Calculate RF hours (holiday + excess sundays)
-                excess_sundays = self.solver.Value(self.excess_sundays[emp_id])
-                rf_hours_applied = hours_holiday + (excess_sundays * hours_sunday)
+                # Calculate RF hours based on Sunday work rule
+                # Rule: ≤2 Sundays = only holiday hours, ≥3 Sundays = holiday + Sunday hours
+                threshold = self.config.global_config.sunday_threshold
+                if num_sundays > threshold:
+                    # Employee worked more than threshold Sundays, so pay for both holiday and Sunday hours
+                    rf_hours_applied = hours_holiday + hours_sunday
+                else:
+                    # Employee worked ≤ threshold Sundays, so only pay for holiday hours (not Sunday hours)
+                    rf_hours_applied = hours_holiday
                 
                 # Calculate monetary values
                 salary_per_hour = emp_data['salary_per_hour']
