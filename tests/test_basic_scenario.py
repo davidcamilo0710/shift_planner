@@ -152,8 +152,9 @@ class TestBasicScenario(unittest.TestCase):
         self.assertEqual(len(holiday_shifts), 2)  # Day + Night shifts on Jan 1
         
         # Check Sunday marking (Sundays in Jan 2025: 5, 12, 19, 26)
+        # Should include: 4 Sunday day shifts + 4 Sunday night shifts + 4 Saturday night shifts that end on Sunday
         sunday_shifts = [s for s in shifts if s.is_sunday]
-        self.assertEqual(len(sunday_shifts), 8)  # 4 Sundays * 2 shifts each
+        self.assertEqual(len(sunday_shifts), 12)  # 4 actual Sundays * 2 shifts + 4 Saturday night shifts touching Sunday
     
     def test_basic_optimization(self):
         """Test basic optimization with minimal scenario."""

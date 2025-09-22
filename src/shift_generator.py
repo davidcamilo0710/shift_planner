@@ -83,6 +83,9 @@ def create_shift(post_id: str, shift_date: date, start_time: time,
     # Determine if shift is night (based on start time)
     is_night = shift_type == "NIGHT"
     
+    # Check if shift touches Sunday (either starts on Sunday OR ends on Sunday)
+    shift_touches_sunday = is_sunday or end_datetime.date().weekday() == 6
+    
     # Create unique shift ID
     shift_id = f"{post_id}_{shift_date.strftime('%Y%m%d')}_{shift_type}"
     
@@ -93,7 +96,7 @@ def create_shift(post_id: str, shift_date: date, start_time: time,
         end_time=end_time,
         duration_hours=duration_hours,
         is_night=is_night,
-        is_sunday=is_sunday,
+        is_sunday=shift_touches_sunday,
         is_holiday=is_holiday,
         shift_id=shift_id
     )

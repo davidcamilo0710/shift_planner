@@ -303,10 +303,15 @@ def _verify_calculation_accuracy(result: VerificationResult, solution: Solution,
             shift.duration_hours for shift in assigned_shifts if shift.is_sunday
         )
         
-        # Count sundays worked
-        calc_num_sundays = len(set(
-            shift.date for shift in assigned_shifts if shift.is_sunday
-        ))
+        # Count sundays worked (actual Sunday calendar dates that the employee worked)
+        # This should match the optimizer's logic which only tracks actual Sunday dates
+        sunday_dates_worked = set()
+        for shift in assigned_shifts:
+            # Only count if shift starts on an actual Sunday date
+            if shift.date.weekday() == 6:  # Sunday
+                sunday_dates_worked.add(shift.date)
+        
+        calc_num_sundays = len(sunday_dates_worked)
         
         # Verify hours calculations
         if abs(calc_hours_assigned - metrics['hours_assigned']) > tolerance:
