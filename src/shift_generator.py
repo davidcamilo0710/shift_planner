@@ -271,21 +271,35 @@ def calculate_night_hours(shift: Shift, night_start: time, day_start: time) -> f
         return (overlap_end - overlap_start).total_seconds() / 3600
 
 
-def get_shifts_with_conflicts(shifts: List[Shift], min_rest_hours: float) -> List[tuple]:
-    """Get pairs of shifts that violate minimum rest time."""
+def get_shifts_with_conflicts(shifts: List[Shift], min_rest_hours: float = 0) -> List[tuple]:
+    """Get pairs of shifts that conflict due to consecutive shift rule.
+    
+    Simplified rule: An employee cannot work two consecutive shifts:
+    1. Overlapping shifts (same time)
+    2. Back-to-back shifts (one ends when the other starts)
+    
+    min_rest_hours parameter is ignored (kept for compatibility).
+    """
     
     conflicts = []
     
     for i, shift1 in enumerate(shifts):
         for j, shift2 in enumerate(shifts[i+1:], i+1):
-            if shifts_conflict(shift1, shift2, min_rest_hours):
+            if shifts_conflict(shift1, shift2):
                 conflicts.append((shift1.shift_id, shift2.shift_id))
     
     return conflicts
 
 
-def shifts_conflict(shift1: Shift, shift2: Shift, min_rest_hours: float) -> bool:
-    """Check if two shifts conflict due to minimum rest requirements."""
+def shifts_conflict(shift1: Shift, shift2: Shift, min_rest_hours: float = 0) -> bool:
+    """Check if two shifts conflict - simplified rule: no consecutive shifts.
+    
+    An employee cannot work two consecutive shifts, defined as:
+    1. Overlapping shifts (same time)
+    2. Back-to-back shifts (one ends when the other starts)
+    
+    min_rest_hours parameter is ignored (kept for compatibility).
+    """
     
     # Create datetime objects
     start1 = datetime.combine(shift1.date, shift1.start_time)
@@ -294,19 +308,14 @@ def shifts_conflict(shift1: Shift, shift2: Shift, min_rest_hours: float) -> bool
     start2 = datetime.combine(shift2.date, shift2.start_time)
     end2 = start2 + timedelta(hours=shift2.duration_hours)
     
-    # Check if shifts overlap in time
+    # Rule 1: Check if shifts overlap in time (same employee can't be in two places)
     if not (end1 <= start2 or end2 <= start1):
         return True
     
-    # Check minimum rest time
-    if end1 <= start2:
-        rest_time = (start2 - end1).total_seconds() / 3600
-        if rest_time < min_rest_hours:
-            return True
+    # Rule 2: Check if shifts are consecutive (back-to-back)
+    # Consecutive means one ends exactly when the other starts
+    if end1 == start2 or end2 == start1:
+        return True
     
-    if end2 <= start1:
-        rest_time = (start1 - end2).total_seconds() / 3600
-        if rest_time < min_rest_hours:
-            return True
-    
+    # Otherwise, shifts don't conflict
     return False

@@ -80,10 +80,10 @@ class ShiftOptimizer:
             }
     
     def _calculate_shift_conflicts(self):
-        """Calculate which shifts conflict due to rest requirements."""
+        """Calculate which shifts conflict due to consecutive shift rules."""
         self.shift_conflicts = get_shifts_with_conflicts(
             self.shifts, 
-            self.config.global_config.min_rest_hours
+            0  # min_rest_hours no longer used - simplified consecutive rule
         )
     
     def _create_variables(self):
@@ -122,20 +122,30 @@ class ShiftOptimizer:
             self.excess_sundays[emp_id] = self.model.NewBoolVar(var_name)
         
         # Continuous variables for hours and costs
-        max_hours = len(self.shifts) * self.config.global_config.shift_length_hours
-        max_centihours = max_hours * 100  # Convert to centihours for precision
-        
         for emp_id in self.employees:
-            # Hours assigned (keep in hours)
-            self.hours_assigned[emp_id] = self.model.NewIntVar(0, max_hours, f"hours_assigned_{emp_id}")
-            # Special hour types in centihours for precision
-            self.hours_night[emp_id] = self.model.NewIntVar(0, max_centihours, f"hours_night_{emp_id}")
-            self.hours_holiday[emp_id] = self.model.NewIntVar(0, max_centihours, f"hours_holiday_{emp_id}")
-            self.hours_sunday[emp_id] = self.model.NewIntVar(0, max_centihours, f"hours_sunday_{emp_id}")
+            emp = self.employees[emp_id]
             
-            # Overtime hours
-            max_he = max(0, max_hours - self.employee_data[emp_id]['hours_to_work'])
-            self.he_hours[emp_id] = self.model.NewIntVar(0, int(max_he), f"he_hours_{emp_id}")
+            # Calculate realistic max hours for this specific employee
+            if emp.tipo == "FIJO":
+                # FIJO employee can only work shifts from their assigned post
+                employee_shifts = [s for s in self.shifts if s.post_id == emp.asignado_post_id]
+            else:
+                # COMODIN can work any shift, but still limited by time conflicts
+                employee_shifts = self.shifts
+            
+            max_hours_for_employee = len(employee_shifts) * self.config.global_config.shift_length_hours
+            max_centihours_for_employee = max_hours_for_employee * 100
+            
+            # Hours assigned (keep in hours)
+            self.hours_assigned[emp_id] = self.model.NewIntVar(0, max_hours_for_employee, f"hours_assigned_{emp_id}")
+            # Special hour types in centihours for precision
+            self.hours_night[emp_id] = self.model.NewIntVar(0, max_centihours_for_employee, f"hours_night_{emp_id}")
+            self.hours_holiday[emp_id] = self.model.NewIntVar(0, max_centihours_for_employee, f"hours_holiday_{emp_id}")
+            self.hours_sunday[emp_id] = self.model.NewIntVar(0, max_centihours_for_employee, f"hours_sunday_{emp_id}")
+            
+            # Overtime hours in centihours
+            max_he_centihours = max(0, int((max_hours_for_employee - self.employee_data[emp_id]['hours_to_work']) * 100))
+            self.he_hours[emp_id] = self.model.NewIntVar(0, max_he_centihours, f"he_hours_{emp_id}")
             self.has_he[emp_id] = self.model.NewBoolVar(f"has_he_{emp_id}")
     
     def _is_valid_assignment(self, emp_id: str, shift: Shift) -> bool:
@@ -192,15 +202,25 @@ class ShiftOptimizer:
         
         # 3. Minimum rest and conflict constraints
         for shift_id1, shift_id2 in self.shift_conflicts:
+            shift1 = self.shifts_by_id[shift_id1]
+            shift2 = self.shifts_by_id[shift_id2]
+            
             for emp_id in self.employees:
-                vars_to_constrain = []
-                if (emp_id, shift_id1) in self.x:
-                    vars_to_constrain.append(self.x[emp_id, shift_id1])
-                if (emp_id, shift_id2) in self.x:
-                    vars_to_constrain.append(self.x[emp_id, shift_id2])
+                emp = self.employees[emp_id]
                 
-                if len(vars_to_constrain) == 2:
-                    self.model.Add(sum(vars_to_constrain) <= 1)
+                # Only apply conflict constraint if employee can potentially work both shifts
+                can_work_shift1 = self._is_valid_assignment(emp_id, shift1)
+                can_work_shift2 = self._is_valid_assignment(emp_id, shift2)
+                
+                if can_work_shift1 and can_work_shift2:
+                    vars_to_constrain = []
+                    if (emp_id, shift_id1) in self.x:
+                        vars_to_constrain.append(self.x[emp_id, shift_id1])
+                    if (emp_id, shift_id2) in self.x:
+                        vars_to_constrain.append(self.x[emp_id, shift_id2])
+                    
+                    if len(vars_to_constrain) == 2:
+                        self.model.Add(sum(vars_to_constrain) <= 1)
         
         # 4. Minimum fixed employees per post
         for post_id, post in self.posts.items():
@@ -312,13 +332,22 @@ class ShiftOptimizer:
             else:
                 self.model.Add(self.hours_sunday[emp_id] == 0)
             
-            # Overtime calculation
-            hours_to_work = int(self.employee_data[emp_id]['hours_to_work'])
-            self.model.Add(self.he_hours[emp_id] >= self.hours_assigned[emp_id] - hours_to_work)
+            # Overtime calculation (use centihours for precision)
+            hours_to_work_centihours = int(self.employee_data[emp_id]['hours_to_work'] * 100)
+            hours_assigned_centihours = self.hours_assigned[emp_id] * 100
+            self.model.Add(self.he_hours[emp_id] >= hours_assigned_centihours - hours_to_work_centihours)
             self.model.Add(self.he_hours[emp_id] >= 0)
             
             # Has overtime indicator
-            big_m = 1000
+            # Calculate big_m based on the actual max bound of the HE variable
+            emp = self.employees[emp_id]
+            if emp.tipo == "FIJO":
+                employee_shifts = [s for s in self.shifts if s.post_id == emp.asignado_post_id]
+            else:
+                employee_shifts = self.shifts
+            max_hours_for_employee = len(employee_shifts) * self.config.global_config.shift_length_hours
+            max_he_for_employee = max(0, int((max_hours_for_employee - self.employee_data[emp_id]['hours_to_work']) * 100))
+            big_m = max_he_for_employee if max_he_for_employee > 0 else 1000
             self.model.Add(self.he_hours[emp_id] <= big_m * self.has_he[emp_id])
             self.model.Add(self.he_hours[emp_id] >= self.has_he[emp_id])
     
@@ -351,16 +380,34 @@ class ShiftOptimizer:
         optimal_has_he = self.solver.Value(total_has_he)
         self.model.Add(total_has_he <= optimal_has_he)
         
-        # Level 2: Minimize holiday surcharge (focus on excess sundays)
+        # Level 2: Minimize holiday surcharge (total RF hours)
         print("Optimizing Level 2: Holiday surcharge...")
         
-        # Minimize employees with excess sundays
+        # Minimize total RF hours (holiday + conditional Sunday hours)
+        # This is more complex because RF hours depend on Sunday count, but we can approximate
+        # by minimizing: total_holiday_hours + total_sunday_hours
+        # The solver will naturally prefer solutions that avoid excess Sunday hours when possible
+        total_rf_hours = (
+            sum(self.hours_holiday[emp_id] for emp_id in self.employees) +
+            sum(self.hours_sunday[emp_id] for emp_id in self.employees)
+        )
+        self.model.Minimize(total_rf_hours)
+        
+        status = self.solver.Solve(self.model)
+        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+            return self._create_failed_solution("Level 2 failed")
+        
+        optimal_rf_hours = self.solver.Value(total_rf_hours)
+        self.model.Add(total_rf_hours <= optimal_rf_hours)
+        
+        # Level 2b: As secondary objective, minimize employees with excess sundays
+        print("Optimizing Level 2b: Minimize employees with excess Sundays...")
         total_excess_sundays = sum(self.excess_sundays[emp_id] for emp_id in self.employees)
         self.model.Minimize(total_excess_sundays)
         
         status = self.solver.Solve(self.model)
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            return self._create_failed_solution("Level 2 failed")
+            return self._create_failed_solution("Level 2b failed")
         
         optimal_excess_sundays = self.solver.Value(total_excess_sundays)
         self.model.Add(total_excess_sundays <= optimal_excess_sundays)
@@ -383,10 +430,10 @@ class ShiftOptimizer:
         # Calculate weighted objective
         objective_terms = []
         
-        # Overtime costs
+        # Overtime costs - convert centihours to hours
         for emp_id in self.employees:
             salary_per_hour = self.employee_data[emp_id]['salary_per_hour']
-            he_cost = self.he_hours[emp_id] * salary_per_hour * self.config.global_config.he_pct
+            he_cost = self.he_hours[emp_id] * salary_per_hour * self.config.global_config.he_pct / 100  # Convert centihours
             objective_terms.append(int(he_cost * self.config.global_config.w_he))
         
         # Holiday costs (simplified) - convert centihours to hours
@@ -480,7 +527,7 @@ class ShiftOptimizer:
                 hours_night = self.solver.Value(self.hours_night[emp_id]) / 100.0
                 hours_holiday = self.solver.Value(self.hours_holiday[emp_id]) / 100.0
                 hours_sunday = self.solver.Value(self.hours_sunday[emp_id]) / 100.0
-                he_hours = self.solver.Value(self.he_hours[emp_id])
+                he_hours = self.solver.Value(self.he_hours[emp_id]) / 100.0  # Convert HE from centihours
                 
                 # Count worked sundays - use same logic as verifier
                 # Count all Sunday dates where the employee actually worked hours
@@ -519,6 +566,7 @@ class ShiftOptimizer:
                     'salario_contrato': emp.salario_contrato,
                     'sueldo_hora': salary_per_hour,
                     'hours_assigned': hours_assigned,
+                    'hours_to_work': emp_data['hours_to_work'],  # Required hours before overtime
                     'hours_night': hours_night,
                     'hours_holiday': hours_holiday,
                     'hours_sunday': hours_sunday,
@@ -540,6 +588,7 @@ class ShiftOptimizer:
                     'salario_contrato': emp.salario_contrato,
                     'sueldo_hora': emp_data['salary_per_hour'],
                     'hours_assigned': 0,
+                    'hours_to_work': emp_data['hours_to_work'],  # Required hours before overtime
                     'hours_night': 0,
                     'hours_holiday': 0,
                     'hours_sunday': 0,

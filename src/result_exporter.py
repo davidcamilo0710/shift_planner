@@ -100,12 +100,13 @@ def create_employee_summary_sheet(solution: Solution) -> pd.DataFrame:
             'SalarioContrato': metrics['salario_contrato'],
             'SueldoHora': round(metrics['sueldo_hora'], 2),
             'HoursAssigned': metrics['hours_assigned'],
-            'HoursNight': metrics['hours_night'],
-            'HoursHoliday': metrics['hours_holiday'],
-            'HoursSunday': metrics['hours_sunday'],
+            'HoursToWork': round(metrics['hours_to_work'], 2),  # Required hours before overtime
+            'HoursNight': round(metrics['hours_night'], 2),
+            'HoursHoliday': round(metrics['hours_holiday'], 2),
+            'HoursSunday': round(metrics['hours_sunday'], 2),
             'NumDomingos': metrics['num_sundays'],
-            'HE_horas': metrics['he_hours'],
-            'RF_horasAplicadas': metrics['rf_hours_applied'],
+            'HE_horas': round(metrics['he_hours'], 2),  # Now with decimals
+            'RF_horasAplicadas': round(metrics['rf_hours_applied'], 2),
             'Val_RN': round(metrics['val_rn'], 2),
             'Val_RF': round(metrics['val_rf'], 2),
             'Val_HE': round(metrics['val_he'], 2),
