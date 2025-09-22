@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta
-from typing import List, Set
+from typing import List, Set, Dict
 import calendar
 
 try:
@@ -10,16 +10,29 @@ except ImportError:
 
 
 @dataclass
+class DayHours:
+    """Represents hours worked on a specific date."""
+    date: date
+    total_hours: float
+    day_hours: float  # Hours worked during day period (06:00-21:00)
+    night_hours: float  # Hours worked during night period (21:00-06:00)
+    is_sunday: bool
+    is_holiday: bool
+
+
+@dataclass
 class Shift:
     post_id: str
-    date: date
+    date: date  # Start date of shift
     start_time: time
     end_time: time
     duration_hours: int
     is_night: bool
-    is_sunday: bool
-    is_holiday: bool
+    is_sunday: bool  # True if shift touches any Sunday
+    is_holiday: bool  # True if shift touches any holiday
     shift_id: str
+    # New: Hours broken down by actual working days
+    hours_by_day: Dict[date, DayHours]
 
 
 def generate_shifts(config: Config) -> List[Shift]:
@@ -50,7 +63,8 @@ def generate_shifts(config: Config) -> List[Shift]:
                     duration_hours=config.global_config.shift_length_hours,
                     is_sunday=is_sunday,
                     is_holiday=is_holiday,
-                    shift_type="DAY"
+                    shift_type="DAY",
+                    config=config
                 )
                 shifts.append(day_shift)
             
@@ -63,19 +77,115 @@ def generate_shifts(config: Config) -> List[Shift]:
                     duration_hours=config.global_config.shift_length_hours,
                     is_sunday=is_sunday,
                     is_holiday=is_holiday,
-                    shift_type="NIGHT"
+                    shift_type="NIGHT",
+                    config=config
                 )
                 shifts.append(night_shift)
     
     return shifts
 
 
+def calculate_hours_by_day(shift_start: datetime, shift_end: datetime, 
+                          day_start: time, night_start: time, 
+                          holiday_dates: Set[date]) -> Dict[date, DayHours]:
+    """
+    Calculate how many hours are worked on each day for a shift that might span multiple days.
+    
+    Args:
+        shift_start: Start datetime of the shift
+        shift_end: End datetime of the shift  
+        day_start: Time when day period starts (e.g., 06:00)
+        night_start: Time when night period starts (e.g., 21:00)
+        holiday_dates: Set of holiday dates
+        
+    Returns:
+        Dictionary mapping each date to DayHours worked on that date
+    """
+    hours_by_day = {}
+    current_time = shift_start
+    
+    while current_time < shift_end:
+        current_date = current_time.date()
+        
+        # Find end of current day for this shift (either end of shift or midnight)
+        day_end = min(shift_end, datetime.combine(current_date + timedelta(days=1), time(0, 0)))
+        
+        # Calculate total hours worked on this date
+        total_hours_this_day = (day_end - current_time).total_seconds() / 3600
+        
+        if total_hours_this_day > 0:
+            # Calculate day vs night hours for this date
+            day_hours, night_hours = _split_day_night_hours(
+                current_time, day_end, current_date, day_start, night_start
+            )
+            
+            # Check if this date is Sunday or holiday
+            is_sunday = current_date.weekday() == 6
+            is_holiday = current_date in holiday_dates
+            
+            hours_by_day[current_date] = DayHours(
+                date=current_date,
+                total_hours=total_hours_this_day,
+                day_hours=day_hours,
+                night_hours=night_hours,
+                is_sunday=is_sunday,
+                is_holiday=is_holiday
+            )
+        
+        # Move to next day
+        current_time = day_end
+    
+    return hours_by_day
+
+
+def _split_day_night_hours(period_start: datetime, period_end: datetime, 
+                          work_date: date, day_start: time, night_start: time) -> tuple[float, float]:
+    """
+    Split hours worked in a period into day hours and night hours.
+    
+    Day period: day_start (06:00) to night_start (21:00) 
+    Night period: night_start (21:00) to day_start+1day (06:00 next day)
+    """
+    day_hours = 0.0
+    night_hours = 0.0
+    
+    # Define day and night periods for this date
+    day_period_start = datetime.combine(work_date, day_start)
+    day_period_end = datetime.combine(work_date, night_start)
+    
+    # Night period spans two parts: evening of work_date and early morning of work_date
+    night_evening_start = datetime.combine(work_date, night_start)
+    night_evening_end = datetime.combine(work_date + timedelta(days=1), time(0, 0))
+    night_morning_start = datetime.combine(work_date, time(0, 0))
+    night_morning_end = datetime.combine(work_date, day_start)
+    
+    # Calculate overlap with day period (06:00-21:00)
+    day_overlap_start = max(period_start, day_period_start)
+    day_overlap_end = min(period_end, day_period_end)
+    if day_overlap_end > day_overlap_start:
+        day_hours += (day_overlap_end - day_overlap_start).total_seconds() / 3600
+    
+    # Calculate overlap with night period - evening part (21:00-24:00)
+    night_evening_overlap_start = max(period_start, night_evening_start)
+    night_evening_overlap_end = min(period_end, night_evening_end)
+    if night_evening_overlap_end > night_evening_overlap_start:
+        night_hours += (night_evening_overlap_end - night_evening_overlap_start).total_seconds() / 3600
+    
+    # Calculate overlap with night period - morning part (00:00-06:00)
+    night_morning_overlap_start = max(period_start, night_morning_start)
+    night_morning_overlap_end = min(period_end, night_morning_end)
+    if night_morning_overlap_end > night_morning_overlap_start:
+        night_hours += (night_morning_overlap_end - night_morning_overlap_start).total_seconds() / 3600
+    
+    return day_hours, night_hours
+
+
 def create_shift(post_id: str, shift_date: date, start_time: time, 
                 duration_hours: int, is_sunday: bool, is_holiday: bool, 
-                shift_type: str) -> Shift:
-    """Create a single shift object."""
+                shift_type: str, config: Config) -> Shift:
+    """Create a single shift object with hours properly distributed by day."""
     
-    # Calculate end time
+    # Calculate start and end times
     start_datetime = datetime.combine(shift_date, start_time)
     end_datetime = start_datetime + timedelta(hours=duration_hours)
     end_time = end_datetime.time()
@@ -83,8 +193,22 @@ def create_shift(post_id: str, shift_date: date, start_time: time,
     # Determine if shift is night (based on start time)
     is_night = shift_type == "NIGHT"
     
-    # Check if shift touches Sunday (either starts on Sunday OR ends on Sunday)
-    shift_touches_sunday = is_sunday or end_datetime.date().weekday() == 6
+    # Convert holidays to set for fast lookup
+    holiday_dates = {h.date for h in config.holidays}
+    
+    # Calculate hours by day
+    hours_by_day = calculate_hours_by_day(
+        start_datetime, end_datetime, 
+        config.global_config.day_start, 
+        config.global_config.night_start,
+        holiday_dates
+    )
+    
+    # Determine if shift touches Sunday (any day worked is Sunday)
+    shift_touches_sunday = any(day_hours.is_sunday for day_hours in hours_by_day.values())
+    
+    # Determine if shift touches holiday (any day worked is holiday)
+    shift_touches_holiday = any(day_hours.is_holiday for day_hours in hours_by_day.values())
     
     # Create unique shift ID
     shift_id = f"{post_id}_{shift_date.strftime('%Y%m%d')}_{shift_type}"
@@ -97,8 +221,9 @@ def create_shift(post_id: str, shift_date: date, start_time: time,
         duration_hours=duration_hours,
         is_night=is_night,
         is_sunday=shift_touches_sunday,
-        is_holiday=is_holiday,
-        shift_id=shift_id
+        is_holiday=shift_touches_holiday,
+        shift_id=shift_id,
+        hours_by_day=hours_by_day
     )
 
 

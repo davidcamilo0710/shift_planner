@@ -292,24 +292,31 @@ def _verify_calculation_accuracy(result: VerificationResult, solution: Solution,
             in solution.assignments.items() if assigned_emp == emp_id
         ]
         
+        # Calculate hours using the new hours_by_day structure
         calc_hours_assigned = sum(shift.duration_hours for shift in assigned_shifts)
-        calc_hours_night = sum(
-            shift.duration_hours for shift in assigned_shifts if shift.is_night
-        )
-        calc_hours_holiday = sum(
-            shift.duration_hours for shift in assigned_shifts if shift.is_holiday
-        )
-        calc_hours_sunday = sum(
-            shift.duration_hours for shift in assigned_shifts if shift.is_sunday
-        )
+        
+        calc_hours_night = 0
+        calc_hours_holiday = 0
+        calc_hours_sunday = 0
+        
+        for shift in assigned_shifts:
+            # Night hours: sum of actual night hours from each day
+            calc_hours_night += sum(day_hours.night_hours for day_hours in shift.hours_by_day.values())
+            
+            # Holiday hours: sum of total hours on holiday days
+            calc_hours_holiday += sum(day_hours.total_hours for day_hours in shift.hours_by_day.values() if day_hours.is_holiday)
+            
+            # Sunday hours: sum of total hours on Sunday days
+            calc_hours_sunday += sum(day_hours.total_hours for day_hours in shift.hours_by_day.values() if day_hours.is_sunday)
         
         # Count sundays worked (actual Sunday calendar dates that the employee worked)
         # This should match the optimizer's logic which only tracks actual Sunday dates
         sunday_dates_worked = set()
         for shift in assigned_shifts:
-            # Only count if shift starts on an actual Sunday date
-            if shift.date.weekday() == 6:  # Sunday
-                sunday_dates_worked.add(shift.date)
+            # Count all Sunday dates where the employee actually worked hours
+            for work_date, day_hours in shift.hours_by_day.items():
+                if day_hours.is_sunday and day_hours.total_hours > 0:
+                    sunday_dates_worked.add(work_date)
         
         calc_num_sundays = len(sunday_dates_worked)
         

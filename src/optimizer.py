@@ -123,13 +123,15 @@ class ShiftOptimizer:
         
         # Continuous variables for hours and costs
         max_hours = len(self.shifts) * self.config.global_config.shift_length_hours
+        max_centihours = max_hours * 100  # Convert to centihours for precision
         
         for emp_id in self.employees:
-            # Hours assigned
+            # Hours assigned (keep in hours)
             self.hours_assigned[emp_id] = self.model.NewIntVar(0, max_hours, f"hours_assigned_{emp_id}")
-            self.hours_night[emp_id] = self.model.NewIntVar(0, max_hours, f"hours_night_{emp_id}")
-            self.hours_holiday[emp_id] = self.model.NewIntVar(0, max_hours, f"hours_holiday_{emp_id}")
-            self.hours_sunday[emp_id] = self.model.NewIntVar(0, max_hours, f"hours_sunday_{emp_id}")
+            # Special hour types in centihours for precision
+            self.hours_night[emp_id] = self.model.NewIntVar(0, max_centihours, f"hours_night_{emp_id}")
+            self.hours_holiday[emp_id] = self.model.NewIntVar(0, max_centihours, f"hours_holiday_{emp_id}")
+            self.hours_sunday[emp_id] = self.model.NewIntVar(0, max_centihours, f"hours_sunday_{emp_id}")
             
             # Overtime hours
             max_he = max(0, max_hours - self.employee_data[emp_id]['hours_to_work'])
@@ -272,17 +274,23 @@ class ShiftOptimizer:
             
             for shift in self.shifts:
                 if (emp_id, shift.shift_id) in self.x:
-                    hours = shift.duration_hours
-                    total_hours_expr.append(self.x[emp_id, shift.shift_id] * hours)
+                    # Total hours (unchanged)
+                    total_hours_expr.append(self.x[emp_id, shift.shift_id] * shift.duration_hours)
                     
-                    if shift.is_night:
-                        night_hours_expr.append(self.x[emp_id, shift.shift_id] * hours)
+                    # Calculate actual night hours from hours_by_day (convert to centihours for integer math)
+                    shift_night_hours = sum(day_hours.night_hours for day_hours in shift.hours_by_day.values())
+                    if shift_night_hours > 0:
+                        night_hours_expr.append(self.x[emp_id, shift.shift_id] * int(shift_night_hours * 100))
                     
-                    if shift.is_holiday:
-                        holiday_hours_expr.append(self.x[emp_id, shift.shift_id] * hours)
+                    # Calculate actual holiday hours from hours_by_day (convert to centihours)
+                    shift_holiday_hours = sum(day_hours.total_hours for day_hours in shift.hours_by_day.values() if day_hours.is_holiday)
+                    if shift_holiday_hours > 0:
+                        holiday_hours_expr.append(self.x[emp_id, shift.shift_id] * int(shift_holiday_hours * 100))
                     
-                    if shift.is_sunday:
-                        sunday_hours_expr.append(self.x[emp_id, shift.shift_id] * hours)
+                    # Calculate actual Sunday hours from hours_by_day (convert to centihours)
+                    shift_sunday_hours = sum(day_hours.total_hours for day_hours in shift.hours_by_day.values() if day_hours.is_sunday)
+                    if shift_sunday_hours > 0:
+                        sunday_hours_expr.append(self.x[emp_id, shift.shift_id] * int(shift_sunday_hours * 100))
             
             if total_hours_expr:
                 self.model.Add(self.hours_assigned[emp_id] == sum(total_hours_expr))
@@ -381,18 +389,18 @@ class ShiftOptimizer:
             he_cost = self.he_hours[emp_id] * salary_per_hour * self.config.global_config.he_pct
             objective_terms.append(int(he_cost * self.config.global_config.w_he))
         
-        # Holiday costs (simplified)
+        # Holiday costs (simplified) - convert centihours to hours
         for emp_id in self.employees:
             salary_per_hour = self.employee_data[emp_id]['salary_per_hour']
-            # RF applies only to holiday hours + excess sunday hours
-            rf_hours = self.hours_holiday[emp_id] + self.excess_sundays[emp_id] * self.hours_sunday[emp_id]
-            rf_cost = rf_hours * salary_per_hour * self.config.global_config.rf_pct
+            # RF applies only to holiday hours + excess sunday hours (in centihours, so divide by 100)
+            rf_hours_centihours = self.hours_holiday[emp_id] + self.excess_sundays[emp_id] * self.hours_sunday[emp_id]
+            rf_cost = rf_hours_centihours * salary_per_hour * self.config.global_config.rf_pct / 100  # Convert centihours to hours
             objective_terms.append(int(rf_cost * self.config.global_config.w_rf))
         
-        # Night costs
+        # Night costs - convert centihours to hours
         for emp_id in self.employees:
             salary_per_hour = self.employee_data[emp_id]['salary_per_hour']
-            rn_cost = self.hours_night[emp_id] * salary_per_hour * self.config.global_config.rn_pct
+            rn_cost = self.hours_night[emp_id] * salary_per_hour * self.config.global_config.rn_pct / 100  # Convert centihours to hours
             objective_terms.append(int(rn_cost * self.config.global_config.w_rn))
         
         # Base salary costs
@@ -468,18 +476,23 @@ class ShiftOptimizer:
             
             if self.solver.Value(self.active[emp_id]):
                 hours_assigned = self.solver.Value(self.hours_assigned[emp_id])
-                hours_night = self.solver.Value(self.hours_night[emp_id])
-                hours_holiday = self.solver.Value(self.hours_holiday[emp_id])
-                hours_sunday = self.solver.Value(self.hours_sunday[emp_id])
+                # Convert centihours back to hours
+                hours_night = self.solver.Value(self.hours_night[emp_id]) / 100.0
+                hours_holiday = self.solver.Value(self.hours_holiday[emp_id]) / 100.0
+                hours_sunday = self.solver.Value(self.hours_sunday[emp_id]) / 100.0
                 he_hours = self.solver.Value(self.he_hours[emp_id])
                 
-                # Count worked sundays
-                sundays = self._get_sundays()
-                num_sundays = sum(
-                    self.solver.Value(self.sunday_worked[emp_id, sunday])
-                    for sunday in sundays
-                    if (emp_id, sunday) in self.sunday_worked
-                )
+                # Count worked sundays - use same logic as verifier
+                # Count all Sunday dates where the employee actually worked hours
+                sunday_dates_worked = set()
+                for shift in self.shifts:
+                    if (emp_id, shift.shift_id) in self.x and self.solver.Value(self.x[emp_id, shift.shift_id]):
+                        # This employee was assigned this shift
+                        for work_date, day_hours in shift.hours_by_day.items():
+                            if day_hours.is_sunday and day_hours.total_hours > 0:
+                                sunday_dates_worked.add(work_date)
+                
+                num_sundays = len(sunday_dates_worked)
                 
                 # Calculate RF hours (holiday + excess sundays)
                 excess_sundays = self.solver.Value(self.excess_sundays[emp_id])
