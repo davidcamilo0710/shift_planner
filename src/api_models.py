@@ -63,6 +63,11 @@ class EmployeeConfig(BaseModel):
     asignado_post_id: Optional[str] = None  # None for COMODINES
     salario_contrato: float
 
+class ComodinConfig(BaseModel):
+    """Individual COMODIN configuration"""
+    salario: float
+    max_posts: int = 5  # Maximum posts this COMODIN can rotate
+
 class OptimizationConfig(BaseModel):
     """Complete optimization configuration"""
     global_config: GlobalConfig
@@ -70,7 +75,8 @@ class OptimizationConfig(BaseModel):
     posts_count: int = 5
     posts_config: List[PostConfig] = []  # Detailed config per post
     comodines_count: int = 2
-    comodines_salaries: List[float] = []  # Salaries for COMODINES
+    comodines_salaries: List[float] = []  # Salaries for COMODINES (deprecated, use comodines_config)
+    comodines_config: List[ComodinConfig] = []  # Detailed config per COMODIN
     
     # Alternative simplified configuration
     use_simple_config: bool = False
@@ -167,6 +173,7 @@ class QuickConfigRequest(BaseModel):
     posts_count: int = 5
     employees_per_post: int = 3  # FIJO employees per post
     comodines_count: int = 2
+    comodines_max_posts: List[int] = []  # Max posts per COMODIN (if empty, uses 5 for all)
     base_salary: float = 1400000.0  # Base salary for all employees
     salary_variation: float = 0.1   # +/- percentage variation
     

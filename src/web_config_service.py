@@ -73,6 +73,7 @@ class WebConfigService:
                 web_config.simple_posts, 
                 web_config.comodines_count,
                 web_config.comodines_salaries,
+                web_config.comodines_config,
                 web_config.global_config.year,
                 web_config.global_config.month
             )
@@ -82,6 +83,7 @@ class WebConfigService:
                 web_config.posts_config,
                 web_config.comodines_count,
                 web_config.comodines_salaries,
+                web_config.comodines_config,
                 web_config.global_config.year,
                 web_config.global_config.month
             )
@@ -96,6 +98,7 @@ class WebConfigService:
     @staticmethod
     def _create_simple_config(simple_posts: Dict[str, int], comodines_count: int, 
                              comodines_salaries: List[float],
+                             comodines_config: List,
                              year: int, month: int) -> tuple[List[Post], List[Employee]]:
         """Create posts and employees from simple configuration"""
         
@@ -135,7 +138,13 @@ class WebConfigService:
         # Create COMODIN employees
         for i in range(comodines_count):
             emp_id = f"C{i+1:03d}"  # Keep C001, C002... for COMODINES
-            salary = comodines_salaries[i] if i < len(comodines_salaries) else 1400000.0
+            # Use new comodines_config if available, fallback to old comodines_salaries
+            if comodines_config and i < len(comodines_config):
+                salary = comodines_config[i].salario
+                max_posts = comodines_config[i].max_posts
+            else:
+                salary = comodines_salaries[i] if i < len(comodines_salaries) else 1400000.0
+                max_posts = 5  # Default
             
             employee = Employee(
                 emp_id=emp_id,
@@ -147,7 +156,7 @@ class WebConfigService:
                 salario_contrato=salary,
                 disponible_desde=date(year, month, 1),
                 disponible_hasta=date(year, month, calendar.monthrange(year, month)[1]),
-                max_posts_if_comodin=5
+                max_posts_if_comodin=max_posts
             )
             employees.append(employee)
         
@@ -156,6 +165,7 @@ class WebConfigService:
     @staticmethod
     def _create_detailed_config(posts_config: List, comodines_count: int,
                                comodines_salaries: List[float],
+                               comodines_config: List,
                                year: int, month: int) -> tuple[List[Post], List[Employee]]:
         """Create posts and employees from detailed configuration"""
         
@@ -199,7 +209,13 @@ class WebConfigService:
         # Create COMODIN employees
         for i in range(comodines_count):
             emp_id = f"C{i+1:03d}"  # Keep C001, C002... for COMODINES
-            salary = comodines_salaries[i] if i < len(comodines_salaries) else 1400000.0
+            # Use new comodines_config if available, fallback to old comodines_salaries
+            if comodines_config and i < len(comodines_config):
+                salary = comodines_config[i].salario
+                max_posts = comodines_config[i].max_posts
+            else:
+                salary = comodines_salaries[i] if i < len(comodines_salaries) else 1400000.0
+                max_posts = 5  # Default
             
             employee = Employee(
                 emp_id=emp_id,
@@ -211,7 +227,7 @@ class WebConfigService:
                 salario_contrato=salary,
                 disponible_desde=date(year, month, 1),
                 disponible_hasta=date(year, month, calendar.monthrange(year, month)[1]),
-                max_posts_if_comodin=5
+                max_posts_if_comodin=max_posts
             )
             employees.append(employee)
         
@@ -246,12 +262,24 @@ class WebConfigService:
             }
             posts_config.append(post_config)
         
-        # Generate COMODIN salaries
+        # Generate COMODIN configuration
         comodines_salaries = []
+        comodines_config_list = []
         for i in range(quick_request.comodines_count):
             salary_variation = random.uniform(-variation, variation)
             salary = base_salary * (1 + salary_variation)
             comodines_salaries.append(round(salary, 2))
+            
+            # Use individual max_posts if provided, otherwise default to 5
+            max_posts = (quick_request.comodines_max_posts[i] 
+                        if i < len(quick_request.comodines_max_posts) 
+                        else 5)
+            
+            from .api_models import ComodinConfig
+            comodines_config_list.append(ComodinConfig(
+                salario=round(salary, 2),
+                max_posts=max_posts
+            ))
         
         # Convert holidays from strings to HolidayConfig
         holidays = []
@@ -296,6 +324,7 @@ class WebConfigService:
             posts_config=detailed_posts_config,
             comodines_count=quick_request.comodines_count,
             comodines_salaries=comodines_salaries,
+            comodines_config=comodines_config_list,
             use_simple_config=False
         )
         
