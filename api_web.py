@@ -24,7 +24,7 @@ from src.api_models import *
 from src.web_config_service import WebConfigService
 
 app = FastAPI(
-    title="SERVAGRO Shift Scheduler API", 
+    title="Shift Scheduler API", 
     version="2.0.0",
     description="Web-based shift optimization API with flexible configuration",
     docs_url="/docs",
@@ -51,6 +51,8 @@ async def root():
             "validate_config": "/config/validate", 
             "optimize": "/optimize",
             "strategies": "/strategies",
+            "holidays": "/holidays",
+            "holidays_by_year": "/holidays/{year}",
             "example": "/config/example"
         }
     }
@@ -181,11 +183,15 @@ async def optimize_with_web_config(request: OptimizationRequest):
         # Convert solution to response format
         employee_metrics = {}
         for emp_id, metrics in solution.employee_metrics.items():
-            employee_metrics[emp_id] = EmployeeMetrics(**metrics)
+            # Add emp_id to metrics if not present
+            metrics_with_id = {**metrics, 'emp_id': emp_id}
+            employee_metrics[emp_id] = EmployeeMetrics(**metrics_with_id)
         
         post_metrics = {}
         for post_id, metrics in solution.post_metrics.items():
-            post_metrics[post_id] = PostMetrics(**metrics)
+            # Add post_id to metrics if not present
+            metrics_with_id = {**metrics, 'post_id': post_id}
+            post_metrics[post_id] = PostMetrics(**metrics_with_id)
         
         total_metrics = TotalMetrics(**solution.total_metrics)
         
@@ -274,6 +280,155 @@ async def get_available_strategies():
             "strategy": "lexicographic",
             "sunday_strategy": "smart"
         }
+    }
+
+@app.get("/holidays/{year}")
+async def get_holidays_by_year(year: int):
+    """Get Colombian holidays for a specific year"""
+    
+    holidays_db = {
+        2024: [
+            {"date": "2024-01-01", "name": "Año Nuevo"},
+            {"date": "2024-01-08", "name": "Día de los Reyes Magos"},
+            {"date": "2024-03-25", "name": "Día de San José"},
+            {"date": "2024-03-28", "name": "Jueves Santo"},
+            {"date": "2024-03-29", "name": "Viernes Santo"},
+            {"date": "2024-05-01", "name": "Día del Trabajo"},
+            {"date": "2024-05-13", "name": "Ascensión del Señor"},
+            {"date": "2024-06-03", "name": "Corpus Christi"},
+            {"date": "2024-06-10", "name": "Sagrado Corazón de Jesús"},
+            {"date": "2024-07-01", "name": "San Pedro y San Pablo"},
+            {"date": "2024-07-20", "name": "Día de la Independencia"},
+            {"date": "2024-08-07", "name": "Batalla de Boyacá"},
+            {"date": "2024-08-19", "name": "Asunción de la Virgen"},
+            {"date": "2024-10-14", "name": "Día de la Raza"},
+            {"date": "2024-11-04", "name": "Todos los Santos"},
+            {"date": "2024-11-11", "name": "Independencia de Cartagena"},
+            {"date": "2024-12-08", "name": "Inmaculada Concepción"},
+            {"date": "2024-12-25", "name": "Navidad"}
+        ],
+        2025: [
+            {"date": "2025-01-01", "name": "Año Nuevo"},
+            {"date": "2025-01-06", "name": "Día de los Reyes Magos"},
+            {"date": "2025-03-24", "name": "Día de San José"},
+            {"date": "2025-04-17", "name": "Jueves Santo"},
+            {"date": "2025-04-18", "name": "Viernes Santo"},
+            {"date": "2025-05-01", "name": "Día del Trabajo"},
+            {"date": "2025-06-02", "name": "Ascensión del Señor"},
+            {"date": "2025-06-23", "name": "Corpus Christi"},
+            {"date": "2025-06-30", "name": "Sagrado Corazón de Jesús"},
+            {"date": "2025-06-30", "name": "San Pedro y San Pablo"},
+            {"date": "2025-07-20", "name": "Día de la Independencia"},
+            {"date": "2025-08-07", "name": "Batalla de Boyacá"},
+            {"date": "2025-08-18", "name": "Asunción de la Virgen"},
+            {"date": "2025-10-13", "name": "Día de la Raza"},
+            {"date": "2025-11-03", "name": "Todos los Santos"},
+            {"date": "2025-11-17", "name": "Independencia de Cartagena"},
+            {"date": "2025-12-08", "name": "Inmaculada Concepción"},
+            {"date": "2025-12-25", "name": "Navidad"}
+        ],
+        2026: [
+            {"date": "2026-01-01", "name": "Año Nuevo"},
+            {"date": "2026-01-12", "name": "Día de los Reyes Magos"},
+            {"date": "2026-03-23", "name": "Día de San José"},
+            {"date": "2026-04-02", "name": "Jueves Santo"},
+            {"date": "2026-04-03", "name": "Viernes Santo"},
+            {"date": "2026-05-01", "name": "Día del Trabajo"},
+            {"date": "2026-05-18", "name": "Ascensión del Señor"},
+            {"date": "2026-06-08", "name": "Corpus Christi"},
+            {"date": "2026-06-15", "name": "Sagrado Corazón de Jesús"},
+            {"date": "2026-06-29", "name": "San Pedro y San Pablo"},
+            {"date": "2026-07-20", "name": "Día de la Independencia"},
+            {"date": "2026-08-07", "name": "Batalla de Boyacá"},
+            {"date": "2026-08-17", "name": "Asunción de la Virgen"},
+            {"date": "2026-10-12", "name": "Día de la Raza"},
+            {"date": "2026-11-02", "name": "Todos los Santos"},
+            {"date": "2026-11-16", "name": "Independencia de Cartagena"},
+            {"date": "2026-12-08", "name": "Inmaculada Concepción"},
+            {"date": "2026-12-25", "name": "Navidad"}
+        ]
+    }
+    
+    if year not in holidays_db:
+        raise HTTPException(status_code=404, detail=f"Holidays not available for year {year}")
+    
+    return {
+        "year": year,
+        "holidays": holidays_db[year],
+        "count": len(holidays_db[year])
+    }
+
+@app.get("/holidays")
+async def get_all_holidays():
+    """Get Colombian holidays for all available years (2024-2026)"""
+    
+    all_holidays = {
+        2024: [
+            {"date": "2024-01-01", "name": "Año Nuevo"},
+            {"date": "2024-01-08", "name": "Día de los Reyes Magos"},
+            {"date": "2024-03-25", "name": "Día de San José"},
+            {"date": "2024-03-28", "name": "Jueves Santo"},
+            {"date": "2024-03-29", "name": "Viernes Santo"},
+            {"date": "2024-05-01", "name": "Día del Trabajo"},
+            {"date": "2024-05-13", "name": "Ascensión del Señor"},
+            {"date": "2024-06-03", "name": "Corpus Christi"},
+            {"date": "2024-06-10", "name": "Sagrado Corazón de Jesús"},
+            {"date": "2024-07-01", "name": "San Pedro y San Pablo"},
+            {"date": "2024-07-20", "name": "Día de la Independencia"},
+            {"date": "2024-08-07", "name": "Batalla de Boyacá"},
+            {"date": "2024-08-19", "name": "Asunción de la Virgen"},
+            {"date": "2024-10-14", "name": "Día de la Raza"},
+            {"date": "2024-11-04", "name": "Todos los Santos"},
+            {"date": "2024-11-11", "name": "Independencia de Cartagena"},
+            {"date": "2024-12-08", "name": "Inmaculada Concepción"},
+            {"date": "2024-12-25", "name": "Navidad"}
+        ],
+        2025: [
+            {"date": "2025-01-01", "name": "Año Nuevo"},
+            {"date": "2025-01-06", "name": "Día de los Reyes Magos"},
+            {"date": "2025-03-24", "name": "Día de San José"},
+            {"date": "2025-04-17", "name": "Jueves Santo"},
+            {"date": "2025-04-18", "name": "Viernes Santo"},
+            {"date": "2025-05-01", "name": "Día del Trabajo"},
+            {"date": "2025-06-02", "name": "Ascensión del Señor"},
+            {"date": "2025-06-23", "name": "Corpus Christi"},
+            {"date": "2025-06-30", "name": "Sagrado Corazón de Jesús"},
+            {"date": "2025-06-30", "name": "San Pedro y San Pablo"},
+            {"date": "2025-07-20", "name": "Día de la Independencia"},
+            {"date": "2025-08-07", "name": "Batalla de Boyacá"},
+            {"date": "2025-08-18", "name": "Asunción de la Virgen"},
+            {"date": "2025-10-13", "name": "Día de la Raza"},
+            {"date": "2025-11-03", "name": "Todos los Santos"},
+            {"date": "2025-11-17", "name": "Independencia de Cartagena"},
+            {"date": "2025-12-08", "name": "Inmaculada Concepción"},
+            {"date": "2025-12-25", "name": "Navidad"}
+        ],
+        2026: [
+            {"date": "2026-01-01", "name": "Año Nuevo"},
+            {"date": "2026-01-12", "name": "Día de los Reyes Magos"},
+            {"date": "2026-03-23", "name": "Día de San José"},
+            {"date": "2026-04-02", "name": "Jueves Santo"},
+            {"date": "2026-04-03", "name": "Viernes Santo"},
+            {"date": "2026-05-01", "name": "Día del Trabajo"},
+            {"date": "2026-05-18", "name": "Ascensión del Señor"},
+            {"date": "2026-06-08", "name": "Corpus Christi"},
+            {"date": "2026-06-15", "name": "Sagrado Corazón de Jesús"},
+            {"date": "2026-06-29", "name": "San Pedro y San Pablo"},
+            {"date": "2026-07-20", "name": "Día de la Independencia"},
+            {"date": "2026-08-07", "name": "Batalla de Boyacá"},
+            {"date": "2026-08-17", "name": "Asunción de la Virgen"},
+            {"date": "2026-10-12", "name": "Día de la Raza"},
+            {"date": "2026-11-02", "name": "Todos los Santos"},
+            {"date": "2026-11-16", "name": "Independencia de Cartagena"},
+            {"date": "2026-12-08", "name": "Inmaculada Concepción"},
+            {"date": "2026-12-25", "name": "Navidad"}
+        ]
+    }
+    
+    return {
+        "available_years": list(all_holidays.keys()),
+        "holidays": all_holidays,
+        "total_holidays": sum(len(holidays) for holidays in all_holidays.values())
     }
 
 if __name__ == "__main__":

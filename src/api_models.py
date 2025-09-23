@@ -29,7 +29,10 @@ class GlobalConfig(BaseModel):
     month: int = 8
     hours_per_week: float = 48.0
     hours_base_month: float = 192.0
-    shift_length_hours: int = 12
+    shift_length_hours: int = 12  # Duration of each shift (8 or 12 hours)
+    shift_start_time: str = "06:00"  # Start time of first shift for rotation (HH:MM format)
+    day_start: str = "06:00"  # Start of day period for night surcharge calculation (HH:MM format)
+    night_start: str = "21:00"  # Start of night period for night surcharge calculation (HH:MM format)
     sunday_threshold: int = 2
     min_fixed_per_post: int = 3
     max_posts_per_comodin: int = 5
@@ -170,6 +173,10 @@ class QuickConfigRequest(BaseModel):
     # Global settings
     year: int = 2025
     month: int = 8
+    shift_length_hours: int = 12  # Duration of each shift (8 or 12 hours)
+    shift_start_time: str = "06:00"  # Start time of first shift for rotation (HH:MM format)
+    day_start: str = "06:00"  # Start of day period for night surcharge calculation (HH:MM format)
+    night_start: str = "21:00"  # Start of night period for night surcharge calculation (HH:MM format)
     holidays: List[str] = []  # List of dates YYYY-MM-DD
 
 class QuickConfigResponse(BaseModel):

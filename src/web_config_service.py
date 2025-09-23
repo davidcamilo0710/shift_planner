@@ -5,9 +5,10 @@ Converts web configuration to internal config format
 """
 
 import random
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from typing import List, Dict
 from dataclasses import dataclass
+import calendar
 
 from .api_models import OptimizationConfig, QuickConfigRequest, EmployeeType
 from .config_loader import Config, GlobalConfig, Employee, Post, Holiday
@@ -19,6 +20,16 @@ class WebConfigService:
     def convert_web_config_to_internal(web_config: OptimizationConfig) -> Config:
         """Convert web configuration to internal Config object"""
         
+        # Parse shift start time for rotation calculations
+        shift_start_str = web_config.global_config.shift_start_time
+        shift_start_time = datetime.strptime(shift_start_str, '%H:%M').time()
+        
+        # Parse day/night start times for surcharge calculations (separate concept)
+        day_start_str = web_config.global_config.day_start
+        night_start_str = web_config.global_config.night_start
+        day_start = datetime.strptime(day_start_str, '%H:%M').time()
+        night_start = datetime.strptime(night_start_str, '%H:%M').time()
+        
         # Convert global config
         global_config = GlobalConfig(
             year=web_config.global_config.year,
@@ -26,6 +37,9 @@ class WebConfigService:
             hours_per_week=web_config.global_config.hours_per_week,
             hours_base_month=web_config.global_config.hours_base_month,
             shift_length_hours=web_config.global_config.shift_length_hours,
+            shift_start_time=shift_start_time,
+            day_start=day_start,
+            night_start=night_start,
             sunday_threshold=web_config.global_config.sunday_threshold,
             min_fixed_per_post=web_config.global_config.min_fixed_per_post,
             max_posts_per_comodin=web_config.global_config.max_posts_per_comodin,
@@ -37,6 +51,7 @@ class WebConfigService:
             w_rn=web_config.global_config.w_rn,
             w_base=web_config.global_config.w_base,
             use_lexicographic=web_config.global_config.use_lexicographic,
+            min_rest_hours=0.0  # Default value
         )
         
         # Convert holidays
@@ -45,7 +60,7 @@ class WebConfigService:
             holiday_date = datetime.strptime(holiday_config.date, '%Y-%m-%d').date()
             holidays.append(Holiday(
                 date=holiday_date,
-                name=holiday_config.name
+                description=holiday_config.name
             ))
         
         # Convert posts and employees
@@ -57,14 +72,18 @@ class WebConfigService:
             posts, employees = WebConfigService._create_simple_config(
                 web_config.simple_posts, 
                 web_config.comodines_count,
-                web_config.comodines_salaries
+                web_config.comodines_salaries,
+                web_config.global_config.year,
+                web_config.global_config.month
             )
         else:
             # Detailed configuration
             posts, employees = WebConfigService._create_detailed_config(
                 web_config.posts_config,
                 web_config.comodines_count,
-                web_config.comodines_salaries
+                web_config.comodines_salaries,
+                web_config.global_config.year,
+                web_config.global_config.month
             )
         
         return Config(
@@ -76,7 +95,8 @@ class WebConfigService:
     
     @staticmethod
     def _create_simple_config(simple_posts: Dict[str, int], comodines_count: int, 
-                             comodines_salaries: List[float]) -> tuple[List[Post], List[Employee]]:
+                             comodines_salaries: List[float],
+                             year: int, month: int) -> tuple[List[Post], List[Employee]]:
         """Create posts and employees from simple configuration"""
         
         posts = []
@@ -87,8 +107,9 @@ class WebConfigService:
             post = Post(
                 post_id=post_id,
                 nombre=f"Puesto {post_id}",
-                cliente="CLIENT",
-                required_coverage=1
+                required_coverage=1,
+                allow_day_shift=True,
+                allow_night_shift=True
             )
             posts.append(post)
             
@@ -116,12 +137,14 @@ class WebConfigService:
             
             employee = Employee(
                 emp_id=emp_id,
+                tipo="COMODIN",
+                asignado_post_id=None,
                 empresa="SERVAGRO",
                 cargo="VIGILANTE",
                 cliente="CLIENT",
-                tipo="COMODIN",
-                asignado_post_id=None,
                 salario_contrato=salary,
+                disponible_desde=date(year, month, 1),
+                disponible_hasta=date(year, month, calendar.monthrange(year, month)[1]),
                 max_posts_if_comodin=5
             )
             employees.append(employee)
@@ -130,7 +153,8 @@ class WebConfigService:
     
     @staticmethod
     def _create_detailed_config(posts_config: List, comodines_count: int,
-                               comodines_salaries: List[float]) -> tuple[List[Post], List[Employee]]:
+                               comodines_salaries: List[float],
+                               year: int, month: int) -> tuple[List[Post], List[Employee]]:
         """Create posts and employees from detailed configuration"""
         
         posts = []
@@ -141,8 +165,9 @@ class WebConfigService:
             post = Post(
                 post_id=post_config.post_id,
                 nombre=f"Puesto {post_config.post_id}",
-                cliente="CLIENT",
-                required_coverage=1
+                required_coverage=1,
+                allow_day_shift=True,
+                allow_night_shift=True
             )
             posts.append(post)
             
@@ -155,12 +180,14 @@ class WebConfigService:
                 
                 employee = Employee(
                     emp_id=emp_id,
+                    tipo="FIJO",
+                    asignado_post_id=post_config.post_id,
                     empresa="SERVAGRO",
                     cargo="VIGILANTE",
                     cliente="CLIENT",
-                    tipo="FIJO",
-                    asignado_post_id=post_config.post_id,
                     salario_contrato=salary,
+                    disponible_desde=date(year, month, 1),
+                    disponible_hasta=date(year, month, calendar.monthrange(year, month)[1]),
                     max_posts_if_comodin=0
                 )
                 employees.append(employee)
@@ -172,12 +199,14 @@ class WebConfigService:
             
             employee = Employee(
                 emp_id=emp_id,
+                tipo="COMODIN",
+                asignado_post_id=None,
                 empresa="SERVAGRO",
                 cargo="VIGILANTE",
                 cliente="CLIENT",
-                tipo="COMODIN",
-                asignado_post_id=None,
                 salario_contrato=salary,
+                disponible_desde=date(year, month, 1),
+                disponible_hasta=date(year, month, calendar.monthrange(year, month)[1]),
                 max_posts_if_comodin=5
             )
             employees.append(employee)
@@ -233,7 +262,11 @@ class WebConfigService:
         
         global_config = APIGlobalConfig(
             year=quick_request.year,
-            month=quick_request.month
+            month=quick_request.month,
+            shift_length_hours=quick_request.shift_length_hours,
+            shift_start_time=quick_request.shift_start_time,
+            day_start=quick_request.day_start,
+            night_start=quick_request.night_start
         )
         
         # Convert to PostConfig objects  

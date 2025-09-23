@@ -9,8 +9,8 @@ from pathlib import Path
 class GlobalConfig:
     year: int
     month: int
-    day_start: time  # End of night hours (HH:MM)
-    night_start: time  # Start of night hours (HH:MM)
+    day_start: time  # End of night hours (HH:MM) - calculated from shift_start_time
+    night_start: time  # Start of night hours (HH:MM) - calculated from shift_start_time + duration
     rn_pct: float  # Night surcharge percentage
     rf_pct: float  # Holiday surcharge percentage
     he_pct: float  # Overtime percentage
@@ -18,8 +18,7 @@ class GlobalConfig:
     hours_per_week: float  # Hours/week for overtime calculation
     min_fixed_per_post: int  # Minimum fixed employees per post
     shift_length_hours: int  # Shift duration
-    day_shift_start: time  # Day shift start time
-    night_shift_start: time  # Night shift start time
+    shift_start_time: time  # First shift start time
     min_rest_hours: float  # Minimum rest hours between shifts
     sunday_threshold: int  # Sunday threshold for holiday surcharge
     max_posts_per_comodin: int  # Maximum posts per comodin

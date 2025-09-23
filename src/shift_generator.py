@@ -46,6 +46,35 @@ def generate_shifts(config: Config) -> List[Shift]:
     # Convert holidays to set for fast lookup
     holiday_dates = {h.date for h in config.holidays}
     
+    # Calculate shift start times based on duration
+    shift_duration = config.global_config.shift_length_hours
+    base_start_time = config.global_config.shift_start_time
+    
+    # Generate shift start times for 24-hour coverage
+    shift_start_times = []
+    if shift_duration == 12:
+        # Two 12-hour shifts: 06:00-18:00 and 18:00-06:00
+        shift_start_times = [
+            (base_start_time, "DAY"),
+            ((datetime.combine(date.today(), base_start_time) + timedelta(hours=12)).time(), "NIGHT")
+        ]
+    elif shift_duration == 8:
+        # Three 8-hour shifts: 06:00-14:00, 14:00-22:00, 22:00-06:00
+        base_dt = datetime.combine(date.today(), base_start_time)
+        shift_start_times = [
+            (base_start_time, "DAY"),
+            ((base_dt + timedelta(hours=8)).time(), "DAY"),
+            ((base_dt + timedelta(hours=16)).time(), "NIGHT")
+        ]
+    else:
+        # Fallback: assume 24/duration shifts
+        shifts_per_day = 24 // shift_duration
+        base_dt = datetime.combine(date.today(), base_start_time)
+        for i in range(shifts_per_day):
+            start_time = (base_dt + timedelta(hours=i * shift_duration)).time()
+            shift_type = "NIGHT" if start_time >= config.global_config.night_start or start_time < config.global_config.day_start else "DAY"
+            shift_start_times.append((start_time, shift_type))
+    
     shifts = []
     
     for day in range(1, num_days + 1):
@@ -54,33 +83,24 @@ def generate_shifts(config: Config) -> List[Shift]:
         is_holiday = current_date in holiday_dates
         
         for post in config.posts:
-            # Generate day shift if allowed
-            if post.allow_day_shift:
-                day_shift = create_shift(
-                    post_id=post.post_id,
-                    shift_date=current_date,
-                    start_time=config.global_config.day_shift_start,
-                    duration_hours=config.global_config.shift_length_hours,
-                    is_sunday=is_sunday,
-                    is_holiday=is_holiday,
-                    shift_type="DAY",
-                    config=config
-                )
-                shifts.append(day_shift)
-            
-            # Generate night shift if allowed
-            if post.allow_night_shift:
-                night_shift = create_shift(
-                    post_id=post.post_id,
-                    shift_date=current_date,
-                    start_time=config.global_config.night_shift_start,
-                    duration_hours=config.global_config.shift_length_hours,
-                    is_sunday=is_sunday,
-                    is_holiday=is_holiday,
-                    shift_type="NIGHT",
-                    config=config
-                )
-                shifts.append(night_shift)
+            # Generate all shifts for this post and day
+            for start_time, shift_type in shift_start_times:
+                # Check if post allows this shift type
+                if ((shift_type == "DAY" and hasattr(post, 'allow_day_shift') and post.allow_day_shift) or
+                    (shift_type == "NIGHT" and hasattr(post, 'allow_night_shift') and post.allow_night_shift) or
+                    (not hasattr(post, 'allow_day_shift') and not hasattr(post, 'allow_night_shift'))):
+                    
+                    shift = create_shift(
+                        post_id=post.post_id,
+                        shift_date=current_date,
+                        start_time=start_time,
+                        duration_hours=shift_duration,
+                        is_sunday=is_sunday,
+                        is_holiday=is_holiday,
+                        shift_type=shift_type,
+                        config=config
+                    )
+                    shifts.append(shift)
     
     return shifts
 
