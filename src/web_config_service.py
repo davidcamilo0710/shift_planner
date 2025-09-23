@@ -101,6 +101,7 @@ class WebConfigService:
         
         posts = []
         employees = []
+        employee_counter = 1  # Global counter for unique employee IDs
         
         # Create posts
         for post_id, employee_count in simple_posts.items():
@@ -115,7 +116,7 @@ class WebConfigService:
             
             # Create FIJO employees for this post
             for i in range(employee_count):
-                emp_id = f"{post_id}_E{i+1:03d}"
+                emp_id = f"E{employee_counter:03d}"  # E001, E002, E003...
                 salary = 1400000.0  # Default salary
                 
                 employee = Employee(
@@ -129,10 +130,11 @@ class WebConfigService:
                     max_posts_if_comodin=0
                 )
                 employees.append(employee)
+                employee_counter += 1
         
         # Create COMODIN employees
         for i in range(comodines_count):
-            emp_id = f"C{i+1:03d}"
+            emp_id = f"C{i+1:03d}"  # Keep C001, C002... for COMODINES
             salary = comodines_salaries[i] if i < len(comodines_salaries) else 1400000.0
             
             employee = Employee(
@@ -159,6 +161,7 @@ class WebConfigService:
         
         posts = []
         employees = []
+        employee_counter = 1  # Global counter for unique employee IDs
         
         # Create posts and their FIJO employees
         for post_config in posts_config:
@@ -173,7 +176,7 @@ class WebConfigService:
             
             # Create FIJO employees for this post
             for i in range(post_config.fixed_employees_count):
-                emp_id = f"{post_config.post_id}_E{i+1:03d}"
+                emp_id = f"E{employee_counter:03d}"  # E001, E002, E003...
                 salary = (post_config.employee_salaries[i] 
                          if i < len(post_config.employee_salaries) 
                          else 1400000.0)
@@ -191,10 +194,11 @@ class WebConfigService:
                     max_posts_if_comodin=0
                 )
                 employees.append(employee)
+                employee_counter += 1
         
         # Create COMODIN employees
         for i in range(comodines_count):
-            emp_id = f"C{i+1:03d}"
+            emp_id = f"C{i+1:03d}"  # Keep C001, C002... for COMODINES
             salary = comodines_salaries[i] if i < len(comodines_salaries) else 1400000.0
             
             employee = Employee(

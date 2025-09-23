@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Excel Optimizer Design System - Professional Corporate Colors */
+
+@layer base {
+  :root {
+    /* Corporate Blue/Green Theme */
+    --background: 240 10% 98%;
+    --foreground: 210 20% 8%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 20% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 20% 8%;
+
+    /* Professional Blue Primary */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 217 91% 55%;
+
+    /* Corporate Green Secondary */
+    --secondary: 142 71% 45%;
+    --secondary-foreground: 0 0% 100%;
+    --secondary-hover: 142 71% 40%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 210 10% 40%;
+
+    --accent: 217 91% 95%;
+    --accent-foreground: 217 91% 20%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Professional borders and inputs */
+    --border: 210 20% 88%;
+    --input: 210 20% 94%;
+    --ring: 217 91% 60%;
+
+    /* Construction badge */
+    --warning: 43 96% 56%;
+    --warning-foreground: 43 96% 15%;
+
+    /* Success states */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 70%));
+    --gradient-secondary: linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 55%));
+    --gradient-hero: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(142 71% 45%) 100%);
+    
+    /* Shadows */
+    --shadow-soft: 0 4px 6px -1px hsl(217 91% 60% / 0.1), 0 2px 4px -1px hsl(217 91% 60% / 0.06);
+    --shadow-medium: 0 10px 15px -3px hsl(217 91% 60% / 0.1), 0 4px 6px -2px hsl(217 91% 60% / 0.05);
+    --shadow-strong: 0 20px 25px -5px hsl(217 91% 60% / 0.1), 0 10px 10px -5px hsl(217 91% 60% / 0.04);
+    
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 210 20% 6%;
+    --foreground: 210 20% 95%;
+
+    --card: 210 20% 8%;
+    --card-foreground: 210 20% 95%;
+
+    --popover: 210 20% 8%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 217 91% 65%;
+    --primary-foreground: 210 20% 8%;
+    --primary-hover: 217 91% 70%;
+
+    --secondary: 142 71% 50%;
+    --secondary-foreground: 210 20% 8%;
+    --secondary-hover: 142 71% 55%;
+
+    --muted: 210 20% 12%;
+    --muted-foreground: 210 10% 60%;
+
+    --accent: 217 91% 15%;
+    --accent-foreground: 217 91% 80%;
+
+    --destructive: 0 84% 65%;
+    --destructive-foreground: 210 20% 8%;
+
+    --border: 210 20% 15%;
+    --input: 210 20% 12%;
+    --ring: 217 91% 65%;
+
+    --warning: 43 96% 65%;
+    --warning-foreground: 43 96% 10%;
+
+    --success: 142 71% 50%;
+    --success-foreground: 210 20% 8%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 65%), hsl(217 91% 75%));
+    --gradient-secondary: linear-gradient(135deg, hsl(142 71% 50%), hsl(142 71% 60%));
+    --gradient-hero: linear-gradient(135deg, hsl(217 91% 65%) 0%, hsl(142 71% 50%) 100%);
+    
+    --shadow-soft: 0 4px 6px -1px hsl(0 0% 0% / 0.2), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
+    --shadow-medium: 0 10px 15px -3px hsl(0 0% 0% / 0.2), 0 4px 6px -2px hsl(0 0% 0% / 0.1);
+    --shadow-strong: 0 20px 25px -5px hsl(0 0% 0% / 0.3), 0 10px 10px -5px hsl(0 0% 0% / 0.1);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+
+  .gradient-secondary {
+    background: var(--gradient-secondary);
+  }
+
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+
+  .shadow-medium {
+    box-shadow: var(--shadow-medium);
+  }
+
+  .shadow-strong {
+    box-shadow: var(--shadow-strong);
+  }
+
+  .transition-smooth {
+    transition: var(--transition-smooth);
+  }
+
+  .transition-bounce {
+    transition: var(--transition-bounce);
+  }
+}
+
+@layer components {
+  .btn-hero {
+    @apply gradient-primary text-primary-foreground font-semibold px-8 py-4 rounded-xl shadow-medium hover:shadow-strong transition-smooth hover:scale-105;
+  }
+
+  .btn-secondary-hero {
+    @apply gradient-secondary text-secondary-foreground font-semibold px-8 py-4 rounded-xl shadow-medium hover:shadow-strong transition-smooth hover:scale-105;
+  }
+
+  .card-professional {
+    @apply bg-card border border-border rounded-2xl shadow-soft hover:shadow-medium transition-smooth;
+  }
+
+  .badge-construction {
+    @apply bg-warning text-warning-foreground font-medium px-3 py-1 rounded-full text-sm;
+  }
+
+  .badge-success {
+    @apply bg-success text-success-foreground font-medium px-3 py-1 rounded-full text-sm;
+  }
+}
