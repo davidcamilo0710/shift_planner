@@ -70,6 +70,18 @@ def main():
         action="store_true",
         help="Generate detailed validation report"
     )
+    parser.add_argument(
+        "--sunday-strategy",
+        choices=["smart", "balanced", "cost_focused"],
+        default="smart",
+        help="Sunday optimization strategy: smart (Sunday Champion - lowest paid employee takes more Sundays), balanced (equal distribution), cost_focused (direct cost minimization)"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for deterministic results (default: 42)"
+    )
     
     args = parser.parse_args()
     
@@ -95,12 +107,14 @@ def main():
         optimizer = ShiftOptimizer(config, shifts)
         
         logger.info(f"Starting optimization using {args.strategy} strategy...")
+        if args.strategy == "lexicographic":
+            logger.info(f"Sunday strategy: {args.sunday_strategy}")
         start_time = datetime.now()
         
         if args.strategy == "lexicographic" or config.global_config.use_lexicographic:
-            solution = optimizer.solve_lexicographic()
+            solution = optimizer.solve_lexicographic(sunday_strategy=args.sunday_strategy, random_seed=args.seed)
         else:
-            solution = optimizer.solve_weighted()
+            solution = optimizer.solve_weighted(random_seed=args.seed)
         
         solve_duration = (datetime.now() - start_time).total_seconds()
         

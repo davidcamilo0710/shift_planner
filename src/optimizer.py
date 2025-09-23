@@ -173,6 +173,157 @@ class ShiftOptimizer:
         
         return sundays
     
+    def _find_sunday_champions(self) -> Dict[str, str]:
+        """
+        Find Sunday Champions using multi-post strategy:
+        - One champion per post (cheapest FIJO employee)
+        - One global champion (cheapest COMODIN employee)
+        
+        Returns:
+            Dict mapping champion_type -> emp_id
+            e.g., {"P001": "E001", "P002": "E004", "Global": "E007"}
+        """
+        champions = {}
+        
+        # Champion per post (FIJO employees only)
+        for post_id in self.posts:
+            fixed_employees = [
+                emp_id for emp_id, emp in self.employees.items()
+                if emp.tipo == "FIJO" and emp.asignado_post_id == post_id
+            ]
+            
+            if fixed_employees:
+                # Find cheapest FIJO employee for this post
+                post_champion = min(fixed_employees, key=lambda emp_id: self.employees[emp_id].salario_contrato)
+                champions[f"Post {post_id}"] = post_champion
+        
+        # Global champion (COMODIN employees - can work anywhere)
+        comodin_employees = [
+            emp_id for emp_id, emp in self.employees.items()
+            if emp.tipo == "COMODIN"
+        ]
+        
+        if comodin_employees:
+            # Find cheapest COMODIN employee
+            global_champion = min(comodin_employees, key=lambda emp_id: self.employees[emp_id].salario_contrato)
+            champions["Global"] = global_champion
+        
+        # If no COMODINES, find the overall cheapest employee as backup global champion
+        if not comodin_employees and champions:
+            # From existing post champions, find the absolute cheapest
+            all_post_champions = list(champions.values())
+            global_champion = min(all_post_champions, key=lambda emp_id: self.employees[emp_id].salario_contrato)
+            champions["Global"] = global_champion
+        elif not champions:
+            # Fallback: just find cheapest employee overall
+            cheapest_employee = min(self.employees.keys(), key=lambda emp_id: self.employees[emp_id].salario_contrato)
+            champions["Global"] = cheapest_employee
+        
+        return champions
+    
+    def _analyze_sunday_roles(self) -> Dict[str, Dict]:
+        """
+        Analyze Sunday roles using intelligent strategy:
+        
+        For each post with FIJOS:
+        - Champion: Cheapest FIJO (takes most Sundays)  
+        - Helper: 2nd cheapest FIJO (≤2 Sundays max)
+        - Others: Rest (minimal Sundays)
+        
+        COMODINES: Strategic relief workers (help where needed most)
+        
+        Returns:
+            Dict with post_id -> roles mapping
+        """
+        roles = {}
+        
+        # Analyze each post with FIJO employees
+        for post_id in self.posts:
+            fixed_employees = [
+                emp_id for emp_id, emp in self.employees.items()
+                if emp.tipo == "FIJO" and emp.asignado_post_id == post_id
+            ]
+            
+            if len(fixed_employees) >= 3:  # Normal case: 3+ FIJOS
+                # Sort by salary (cheapest first)
+                fixed_sorted = sorted(fixed_employees, key=lambda emp_id: self.employees[emp_id].salario_contrato)
+                
+                roles[post_id] = {
+                    'champion': fixed_sorted[0],  # Cheapest takes most Sundays
+                    'helper': fixed_sorted[1],    # 2nd cheapest helps (≤2 Sundays)
+                    'others': fixed_sorted[2:]    # Rest avoid Sundays
+                }
+                
+            elif len(fixed_employees) == 2:  # Special case: only 2 FIJOS
+                fixed_sorted = sorted(fixed_employees, key=lambda emp_id: self.employees[emp_id].salario_contrato)
+                roles[post_id] = {
+                    'champion': fixed_sorted[0],  # Cheapest takes more
+                    'helper': fixed_sorted[1]     # 2nd one helps
+                }
+                
+            elif len(fixed_employees) == 1:  # Edge case: only 1 FIJO
+                roles[post_id] = {
+                    'champion': fixed_employees[0]  # Must take all Sundays
+                }
+        
+        # COMODINES: Strategic relief workers
+        comodin_employees = [
+            emp_id for emp_id, emp in self.employees.items()
+            if emp.tipo == "COMODIN"
+        ]
+        
+        if comodin_employees:
+            # Sort COMODINES by salary (cheapest first for relief work)
+            comodines_sorted = sorted(comodin_employees, key=lambda emp_id: self.employees[emp_id].salario_contrato)
+            roles["COMODINES"] = {
+                'employees': comodines_sorted
+            }
+        
+        return roles
+    
+    def _calculate_sunday_weight(self, emp_id: str, sunday_roles: Dict[str, Dict]) -> int:
+        """
+        Calculate AGGRESSIVE Sunday penalty weight based on employee's role.
+        
+        Lower weight = prefer this employee for excess Sundays
+        Higher weight = avoid excess Sundays for this employee
+        
+        MUCH MORE AGGRESSIVE STRATEGY:
+        - Champions: Weight 1 (WANT them to have excess)
+        - Helpers: Weight 50 (can help but discouraged)  
+        - Others: Weight 10000 (NEVER should have excess)
+        - COMODINES: Weight 5 (encouraged for relief)
+        """
+        emp = self.employees[emp_id]
+        base_salary_weight = int(emp.salario_contrato / 1000)
+        
+        if emp.tipo == "COMODIN":
+            # COMODINES are strategic relief - encourage them for Sunday work
+            return 5  # Very low penalty to encourage relief work
+        
+        # For FIJO employees, check their role in their post
+        emp_post = emp.asignado_post_id
+        if emp_post in sunday_roles:
+            post_roles = sunday_roles[emp_post]
+            
+            if 'champion' in post_roles and post_roles['champion'] == emp_id:
+                # Champion SHOULD take excess Sundays - lowest possible penalty
+                print(f"      🏆 Champion {emp_id}: Weight 1 (WANTS excess Sundays)")
+                return 1
+                
+            elif 'helper' in post_roles and post_roles['helper'] == emp_id:
+                # Helper can help but should be discouraged from excess
+                print(f"      🤝 Helper {emp_id}: Weight 50 (moderate excess OK)")
+                return 50
+                
+            elif 'others' in post_roles and emp_id in post_roles['others']:
+                # Others should NEVER have excess Sundays - BRUTAL penalty
+                print(f"      🚫 Other {emp_id}: Weight 10000 (NO excess allowed)")
+                return 10000
+        
+        # Default: high penalty
+        return base_salary_weight * 10
+    
     def _create_constraints(self):
         """Create all optimization constraints."""
         
@@ -351,8 +502,12 @@ class ShiftOptimizer:
             self.model.Add(self.he_hours[emp_id] <= big_m * self.has_he[emp_id])
             self.model.Add(self.he_hours[emp_id] >= self.has_he[emp_id])
     
-    def solve_lexicographic(self) -> Solution:
+    def solve_lexicographic(self, sunday_strategy: str = "smart", random_seed: int = 42) -> Solution:
         """Solve using lexicographic optimization strategy."""
+        
+        # Set random seed for deterministic results
+        self.solver.parameters.random_seed = random_seed
+        print(f"🎲 Using random seed: {random_seed}")
         
         # Level 1: Minimize total overtime hours and employees with overtime
         print("Optimizing Level 1: Overtime...")
@@ -400,17 +555,99 @@ class ShiftOptimizer:
         optimal_rf_hours = self.solver.Value(total_rf_hours)
         self.model.Add(total_rf_hours <= optimal_rf_hours)
         
-        # Level 2b: As secondary objective, minimize employees with excess sundays
-        print("Optimizing Level 2b: Minimize employees with excess Sundays...")
-        total_excess_sundays = sum(self.excess_sundays[emp_id] for emp_id in self.employees)
-        self.model.Minimize(total_excess_sundays)
+        # Level 2b: Multiple Sunday optimization strategies
+        if sunday_strategy == "smart":
+            print("Optimizing Level 2b: Intelligent Sunday Strategy...")
+            
+            # Analyze setup: FIJOS vs COMODINES
+            sunday_roles = self._analyze_sunday_roles()
+            
+            print("🧠 Sunday Strategy Analysis:")
+            for post_id, roles in sunday_roles.items():
+                if post_id == "COMODINES":
+                    if roles['employees']:
+                        print(f"   COMODINES: {len(roles['employees'])} relief employees")
+                        for emp_id in roles['employees']:
+                            print(f"     - {emp_id} (relief worker)")
+                else:
+                    print(f"   Post {post_id}:")
+                    if 'champion' in roles:
+                        print(f"     Champion: {roles['champion']} (takes most Sundays)")
+                    if 'helper' in roles:
+                        print(f"     Helper: {roles['helper']} (≤2 Sundays max)")
+                    if 'others' in roles:
+                        print(f"     Others: {roles['others']} (minimal Sundays)")
+            
+            # Create intelligent weights based on roles
+            weighted_excess_sundays = []
+            
+            for emp_id in self.employees:
+                emp = self.employees[emp_id]
+                weight = self._calculate_sunday_weight(emp_id, sunday_roles)
+                weighted_excess_sundays.append(self.excess_sundays[emp_id] * weight)
+            
+            smart_excess_objective = sum(weighted_excess_sundays)
+            self.model.Minimize(smart_excess_objective)
+            
+        elif sunday_strategy == "balanced":
+            print("Optimizing Level 2b: Balanced Sunday distribution...")
+            # Equal penalty for all employees having excess Sundays
+            total_excess_sundays = sum(self.excess_sundays[emp_id] for emp_id in self.employees)
+            self.model.Minimize(total_excess_sundays)
+            
+        elif sunday_strategy == "cost_focused":
+            print("Optimizing Level 2b: Cost-focused Sunday optimization...")
+            # Directly minimize Sunday cost (skip to Level 2c logic)
+            sunday_cost_terms = []
+            for emp_id in self.employees:
+                salary_per_hour = self.employee_data[emp_id]['salary_per_hour']
+                rf_cost_per_centihour = salary_per_hour * self.config.global_config.rf_pct / 100
+                sunday_cost = self.hours_sunday[emp_id] * int(rf_cost_per_centihour)
+                sunday_cost_terms.append(sunday_cost)
+            
+            total_sunday_cost = sum(sunday_cost_terms)
+            self.model.Minimize(total_sunday_cost)
+        else:
+            # Default: simple minimize excess employees
+            total_excess_sundays = sum(self.excess_sundays[emp_id] for emp_id in self.employees)
+            self.model.Minimize(total_excess_sundays)
         
         status = self.solver.Solve(self.model)
         if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             return self._create_failed_solution("Level 2b failed")
         
-        optimal_excess_sundays = self.solver.Value(total_excess_sundays)
-        self.model.Add(total_excess_sundays <= optimal_excess_sundays)
+        # Fix the objective value based on strategy
+        if sunday_strategy == "smart":
+            optimal_smart_excess = self.solver.Value(smart_excess_objective)
+            self.model.Add(smart_excess_objective <= optimal_smart_excess)
+        elif sunday_strategy == "cost_focused":
+            optimal_sunday_cost_2b = self.solver.Value(total_sunday_cost)
+            self.model.Add(total_sunday_cost <= optimal_sunday_cost_2b)
+        else:
+            optimal_excess_sundays = self.solver.Value(total_excess_sundays)
+            self.model.Add(total_excess_sundays <= optimal_excess_sundays)
+        
+        # Level 2c: Minimize total Sunday cost (salary-weighted) for smarter distribution
+        print("Optimizing Level 2c: Minimize total Sunday cost...")
+        sunday_cost_terms = []
+        for emp_id in self.employees:
+            # Calculate cost per centihour for this employee's Sunday work
+            salary_per_hour = self.employee_data[emp_id]['salary_per_hour']
+            rf_cost_per_centihour = salary_per_hour * self.config.global_config.rf_pct / 100
+            
+            # Total Sunday cost for this employee (in integer units)
+            sunday_cost = self.hours_sunday[emp_id] * int(rf_cost_per_centihour)
+            sunday_cost_terms.append(sunday_cost)
+        
+        total_sunday_cost = sum(sunday_cost_terms)
+        self.model.Minimize(total_sunday_cost)
+        
+        status = self.solver.Solve(self.model)
+        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+            return self._create_failed_solution("Level 2c failed")
+        
+        optimal_sunday_cost = self.solver.Value(total_sunday_cost) 
+        self.model.Add(total_sunday_cost <= optimal_sunday_cost)
         
         # Level 3: Minimize night hours
         print("Optimizing Level 3: Night hours...")
@@ -424,8 +661,12 @@ class ShiftOptimizer:
         
         return self._extract_solution(status)
     
-    def solve_weighted(self) -> Solution:
+    def solve_weighted(self, random_seed: int = 42) -> Solution:
         """Solve using weighted objective function."""
+        
+        # Set random seed for deterministic results
+        self.solver.parameters.random_seed = random_seed
+        print(f"🎲 Using random seed: {random_seed}")
         
         # Calculate weighted objective
         objective_terms = []
