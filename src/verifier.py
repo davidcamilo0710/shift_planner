@@ -243,7 +243,8 @@ def _verify_comodin_limits(result: VerificationResult, solution: Solution,
                 posts_used.add(shift.post_id)
         
         # Check limit
-        max_posts_emp = min(emp.max_posts_if_comodin, max_posts_global)
+        # Prioritize individual max_posts_if_comodin, fallback to global max_posts_per_comodin
+        max_posts_emp = emp.max_posts_if_comodin if emp.max_posts_if_comodin > 0 else max_posts_global
         if len(posts_used) > max_posts_emp:
             result.add_error(
                 f"Comodin {emp_id} assigned to {len(posts_used)} posts, "

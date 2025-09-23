@@ -386,7 +386,8 @@ class ShiftOptimizer:
         # 5. Comodin post limits
         for emp_id, emp in self.employees.items():
             if emp.tipo == "COMODIN":
-                max_posts = min(emp.max_posts_if_comodin, self.config.global_config.max_posts_per_comodin)
+                # Prioritize individual max_posts_if_comodin, fallback to global max_posts_per_comodin
+                max_posts = emp.max_posts_if_comodin if emp.max_posts_if_comodin > 0 else self.config.global_config.max_posts_per_comodin
                 comodin_posts = [self.z[emp_id, post_id] for post_id in self.posts]
                 self.model.Add(sum(comodin_posts) <= max_posts)
                 
