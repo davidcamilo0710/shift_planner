@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/Users/camilo/Downloads/SERVAGRO/planificador-turnos/api_web.py", line 7, in <module>
+    from fastapi import FastAPI, HTTPException
+ModuleNotFoundError: No module named 'fastapi'

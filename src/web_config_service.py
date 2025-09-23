@@ -144,7 +144,7 @@ class WebConfigService:
                 max_posts = comodines_config[i].max_posts
             else:
                 salary = comodines_salaries[i] if i < len(comodines_salaries) else 1400000.0
-                max_posts = 5  # Default
+                max_posts = 0  # 0 means use global config
             
             employee = Employee(
                 emp_id=emp_id,
@@ -215,7 +215,7 @@ class WebConfigService:
                 max_posts = comodines_config[i].max_posts
             else:
                 salary = comodines_salaries[i] if i < len(comodines_salaries) else 1400000.0
-                max_posts = 5  # Default
+                max_posts = 0  # 0 means use global config
             
             employee = Employee(
                 emp_id=emp_id,
