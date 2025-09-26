@@ -624,6 +624,9 @@ class ShiftOptimizer:
             
             self.model.Minimize(max_hours)
             
+            # Define total_excess_sundays for later use
+            total_excess_sundays = sum(self.excess_sundays[emp_id] for emp_id in self.employees)
+            
         elif sunday_strategy == "surcharge_equity":
             print("Optimizing Level 2b: Surcharge equity distribution...")
             # Calculate surcharge value per employee (RF + RN + HE)
@@ -636,17 +639,20 @@ class ShiftOptimizer:
                 # Otherwise, RF applies only to holiday hours
                 rf_hours_applied = self.model.NewIntVar(0, 100000, f'rf_hours_applied_{emp_id}')
                 
-                # Use a conditional: if excess_sundays then holiday+sunday else holiday only
-                rf_with_sunday = self.hours_holiday[emp_id] + self.hours_sunday[emp_id]
-                rf_without_sunday = self.hours_holiday[emp_id]
+                # Create auxiliary variable for the conditional logic
+                sunday_bonus_hours = self.model.NewIntVar(0, 100000, f'sunday_bonus_hours_{emp_id}')
                 
-                # If excess_sundays[emp_id] is true, use holiday+sunday, else use holiday only
-                self.model.Add(rf_hours_applied >= rf_without_sunday)
-                self.model.Add(rf_hours_applied <= rf_with_sunday)
+                # If excess_sundays is true, sunday_bonus_hours = hours_sunday, else = 0
+                self.model.Add(sunday_bonus_hours <= self.hours_sunday[emp_id])
+                self.model.Add(sunday_bonus_hours >= 0)
                 
-                # Link to excess sundays: if no excess, then rf_hours_applied = holiday only
-                self.model.Add(rf_hours_applied <= rf_without_sunday + (rf_with_sunday - rf_without_sunday) * self.excess_sundays[emp_id])
-                self.model.Add(rf_hours_applied >= rf_without_sunday + (rf_with_sunday - rf_without_sunday) * self.excess_sundays[emp_id])
+                # Big M constraint for the conditional
+                M = 100000  # Large constant
+                self.model.Add(sunday_bonus_hours <= M * self.excess_sundays[emp_id])
+                self.model.Add(sunday_bonus_hours >= self.hours_sunday[emp_id] - M * (1 - self.excess_sundays[emp_id]))
+                
+                # RF hours = holiday hours + conditional sunday hours
+                self.model.Add(rf_hours_applied == self.hours_holiday[emp_id] + sunday_bonus_hours)
                 
                 # Calculate surcharge values (using integer math to avoid float issues)
                 rf_value = int(salary_per_hour * self.config.global_config.rf_pct / 100) * rf_hours_applied
@@ -662,6 +668,9 @@ class ShiftOptimizer:
                 self.model.Add(max_surcharge >= surcharge)
             
             self.model.Minimize(max_surcharge)
+            
+            # Define total_excess_sundays for later use
+            total_excess_sundays = sum(self.excess_sundays[emp_id] for emp_id in self.employees)
             
         else:
             # Default: simple minimize excess employees
