@@ -31,6 +31,10 @@ class ShiftOptimizer:
         self.model = cp_model.CpModel()
         self.solver = cp_model.CpSolver()
         
+        # Configure solver timeout (3 minutes = 180 seconds)
+        self.solver.parameters.max_time_in_seconds = 180.0
+        self.solver.parameters.log_search_progress = False  # Reduce verbose output
+        
         # Create indices
         self.employees = {emp.emp_id: emp for emp in config.employees}
         self.posts = {post.post_id: post for post in config.posts}
@@ -518,7 +522,9 @@ class ShiftOptimizer:
         self.model.Minimize(total_he)
         
         status = self.solver.Solve(self.model)
-        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        if status == cp_model.UNKNOWN:
+            print("Warning: Level 1 reached timeout, using partial solution...")
+        elif status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             return self._create_failed_solution("Level 1 failed")
         
         # Fix the overtime constraint for next level
@@ -530,7 +536,9 @@ class ShiftOptimizer:
         self.model.Minimize(total_has_he)
         
         status = self.solver.Solve(self.model)
-        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        if status == cp_model.UNKNOWN:
+            print("Warning: Level 1b reached timeout, using partial solution...")
+        elif status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             return self._create_failed_solution("Level 1b failed")
         
         optimal_has_he = self.solver.Value(total_has_he)
@@ -550,7 +558,9 @@ class ShiftOptimizer:
         self.model.Minimize(total_rf_hours)
         
         status = self.solver.Solve(self.model)
-        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        if status == cp_model.UNKNOWN:
+            print("Warning: Level 2 reached timeout, using partial solution...")
+        elif status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             return self._create_failed_solution("Level 2 failed")
         
         optimal_rf_hours = self.solver.Value(total_rf_hours)
@@ -654,7 +664,9 @@ class ShiftOptimizer:
             self.model.Minimize(total_excess_sundays)
         
         status = self.solver.Solve(self.model)
-        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        if status == cp_model.UNKNOWN:
+            print("Warning: Level 2b reached timeout, using partial solution...")
+        elif status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             return self._create_failed_solution("Level 2b failed")
         
         # Fix the objective value based on strategy
@@ -684,7 +696,9 @@ class ShiftOptimizer:
         self.model.Minimize(total_sunday_cost)
         
         status = self.solver.Solve(self.model)
-        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        if status == cp_model.UNKNOWN:
+            print("Warning: Level 2c reached timeout, using partial solution...")
+        elif status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             return self._create_failed_solution("Level 2c failed")
         
         optimal_sunday_cost = self.solver.Value(total_sunday_cost) 
@@ -697,7 +711,9 @@ class ShiftOptimizer:
         self.model.Minimize(total_night_hours)
         
         status = self.solver.Solve(self.model)
-        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        if status == cp_model.UNKNOWN:
+            print("Warning: Level 3 reached timeout, using partial solution...")
+        elif status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             return self._create_failed_solution("Level 3 failed")
         
         return self._extract_solution(status)
@@ -741,6 +757,8 @@ class ShiftOptimizer:
             self.model.Minimize(sum(objective_terms))
         
         status = self.solver.Solve(self.model)
+        if status == cp_model.UNKNOWN:
+            print("Warning: Final solve reached timeout, using partial solution...")
         return self._extract_solution(status)
     
     def _create_failed_solution(self, message: str) -> Solution:
@@ -759,8 +777,12 @@ class ShiftOptimizer:
     def _extract_solution(self, status) -> Solution:
         """Extract solution from solved model."""
         
-        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+        if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE, cp_model.UNKNOWN]:
             return self._create_failed_solution(f"Solver status: {status}")
+        
+        # Check if we have a partial solution with UNKNOWN status
+        if status == cp_model.UNKNOWN and not self.solver.NumSolutions():
+            return self._create_failed_solution("Timeout reached with no solution found")
         
         # Extract assignments
         assignments = {}
@@ -790,8 +812,8 @@ class ShiftOptimizer:
             employee_metrics=employee_metrics,
             post_metrics=post_metrics,
             total_metrics=total_metrics,
-            objective_value=self.solver.ObjectiveValue() if status == cp_model.OPTIMAL else 0,
-            solver_status="OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE",
+            objective_value=self.solver.ObjectiveValue() if status in [cp_model.OPTIMAL, cp_model.UNKNOWN] else 0,
+            solver_status="OPTIMAL" if status == cp_model.OPTIMAL else ("TIMEOUT" if status == cp_model.UNKNOWN else "FEASIBLE"),
             solve_time=self.solver.WallTime()
         )
     
