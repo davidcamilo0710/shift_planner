@@ -274,7 +274,9 @@ async def get_available_strategies():
         "sunday_strategies": {
             "smart": "Intelligent Sunday distribution (Champion + Helper + Others + COMODIN relief)",
             "balanced": "Equal penalty for all employees having excess Sundays", 
-            "cost_focused": "Direct minimization of Sunday costs"
+            "cost_focused": "Direct minimization of Sunday costs",
+            "load_balancing": "Balance total working hours equally among all employees",
+            "surcharge_equity": "Distribute surcharge earnings (RF+RN+HE) equitably among employees"
         },
         "recommended": {
             "strategy": "lexicographic",

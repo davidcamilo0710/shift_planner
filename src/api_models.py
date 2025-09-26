@@ -20,6 +20,8 @@ class SundayStrategy(str, Enum):
     SMART = "smart"
     BALANCED = "balanced"
     COST_FOCUSED = "cost_focused"
+    LOAD_BALANCING = "load_balancing"
+    SURCHARGE_EQUITY = "surcharge_equity"
 
 # === CONFIGURATION MODELS ===
 
