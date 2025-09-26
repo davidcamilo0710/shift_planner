@@ -629,45 +629,21 @@ class ShiftOptimizer:
             
         elif sunday_strategy == "surcharge_equity":
             print("Optimizing Level 2b: Surcharge equity distribution...")
-            # Calculate surcharge value per employee (RF + RN + HE)
-            surcharge_values = []
+            # Very simplified approach: minimize variance in holiday+night hours only
+            # This achieves equity in the most common surcharge types (RF+RN)
+            
+            surcharge_hours_per_emp = []
             for emp_id in self.employees:
-                salary_per_hour = self.employee_data[emp_id]['salary_per_hour']
-                
-                # RF surcharge - use excess sundays logic similar to the existing code
-                # If employee works excess sundays, RF applies to holiday + sunday hours
-                # Otherwise, RF applies only to holiday hours
-                rf_hours_applied = self.model.NewIntVar(0, 100000, f'rf_hours_applied_{emp_id}')
-                
-                # Create auxiliary variable for the conditional logic
-                sunday_bonus_hours = self.model.NewIntVar(0, 100000, f'sunday_bonus_hours_{emp_id}')
-                
-                # If excess_sundays is true, sunday_bonus_hours = hours_sunday, else = 0
-                self.model.Add(sunday_bonus_hours <= self.hours_sunday[emp_id])
-                self.model.Add(sunday_bonus_hours >= 0)
-                
-                # Big M constraint for the conditional
-                M = 100000  # Large constant
-                self.model.Add(sunday_bonus_hours <= M * self.excess_sundays[emp_id])
-                self.model.Add(sunday_bonus_hours >= self.hours_sunday[emp_id] - M * (1 - self.excess_sundays[emp_id]))
-                
-                # RF hours = holiday hours + conditional sunday hours
-                self.model.Add(rf_hours_applied == self.hours_holiday[emp_id] + sunday_bonus_hours)
-                
-                # Calculate surcharge values (using integer math to avoid float issues)
-                rf_value = int(salary_per_hour * self.config.global_config.rf_pct / 100) * rf_hours_applied
-                rn_value = int(salary_per_hour * self.config.global_config.rn_pct / 100) * self.hours_night[emp_id]
-                he_value = int(salary_per_hour * self.config.global_config.he_pct / 100) * self.he_hours[emp_id]
-                
-                total_surcharge = rf_value + rn_value + he_value
-                surcharge_values.append(total_surcharge)
+                # Focus on RF and RN hours (most common surcharges)
+                surcharge_hours = self.hours_holiday[emp_id] + self.hours_night[emp_id]
+                surcharge_hours_per_emp.append(surcharge_hours)
             
-            # Minimize the maximum surcharge value (equitable distribution)
-            max_surcharge = self.model.NewIntVar(0, 10000000, 'max_surcharge')
-            for surcharge in surcharge_values:
-                self.model.Add(max_surcharge >= surcharge)
+            # Minimize the maximum surcharge hours
+            max_surcharge_hours = self.model.NewIntVar(0, 100000, 'max_surcharge_hours')
+            for surcharge_hours in surcharge_hours_per_emp:
+                self.model.Add(max_surcharge_hours >= surcharge_hours)
             
-            self.model.Minimize(max_surcharge)
+            self.model.Minimize(max_surcharge_hours)
             
             # Define total_excess_sundays for later use
             total_excess_sundays = sum(self.excess_sundays[emp_id] for emp_id in self.employees)
